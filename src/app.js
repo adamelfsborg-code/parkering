@@ -215,12 +215,23 @@
   }
 
   const COLORS = { ok: '#1f9d55', no: '#d64545', soon: '#e0a100', unk: '#8a8f98' };
+
+  // Sidor där man aldrig får parkera (huvudled/förbudszon utan undantag, förbud dygnet runt,
+  // reserverade platser, gågator) ritas inte alls – kartan visar bara var det ibland är tillåtet.
+  function neverAllowed(s, isLeft) {
+    const hw = HW[s[2]], rs = sideRules(s, isLeft), allows = rs.some(r => r.kind === 'allow');
+    if (isLeft ? s[4] & 1 : s[4] & 2) return true;
+    if (hw === 'living_street' && !allows) return true;
+    return rs.some(r => (BANS.has(r.kind) && !r.sched) || ((r.kind === 'mainroad' || r.kind === 'area_nopark') && !allows));
+  }
+  let hiddenSides = 0;
   const sides = [];
   const streetsByName = new Map();
   for (const s of D.streets) {
     const ll = decode(s[7]), xy = ll.map(xyOf), name = D.names[s[1]];
     if (!APP.tiles) L.polyline(ll, { color: '#fff', weight: 4, renderer: rBase, interactive: false }).addTo(map);
     for (const isLeft of [true, false]) {
+      if (neverAllowed(s, isLeft)) { hiddenSides++; continue; }
       const line = L.polyline(ll, { weight: 4, renderer: rSide, lineCap: 'butt' }).addTo(map);
       const side = { s, isLeft, xy, line, name };
       line.on('click', () => showSide(side));
@@ -760,5 +771,5 @@
   setInterval(() => { if (mode !== 'custom') recolor(); }, 60000);
   if (APP.tiles) locate(false);
 
-  window.__dp = { map, sides, findParking, R, planState };
+  window.__dp = { map, sides, hiddenSides, findParking, R, planState };
 })();
