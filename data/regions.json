@@ -1,0 +1,79 @@
+[
+ {
+  "id": "gavle",
+  "name": "Gävle",
+  "kommun": "Gävle kommun",
+  "kod": "2180",
+  "extras": {
+   "zones": "zones.kml",
+   "forbud": "forbudszoner.kml",
+   "facilities": "facilities.json",
+   "datumKml": "datumzon.kml"
+  },
+  "base": true,
+  "lan": "21FS"
+ },
+ {
+  "id": "sandviken",
+  "name": "Sandviken",
+  "kommun": "Sandvikens kommun",
+  "kod": "2181",
+  "lan": "21FS"
+ },
+ {
+  "id": "uppsala",
+  "name": "Uppsala",
+  "kommun": "Uppsala kommun",
+  "kod": "0380",
+  "lan": "03FS"
+ },
+ {
+  "id": "hofors",
+  "name": "Hofors",
+  "kommun": "Hofors kommun",
+  "kod": "2104",
+  "lan": "21FS"
+ },
+ {
+  "id": "ockelbo",
+  "name": "Ockelbo",
+  "kommun": "Ockelbo kommun",
+  "kod": "2101",
+  "lan": "21FS"
+ },
+ {
+  "id": "alvkarleby",
+  "name": "Älvkarleby",
+  "kommun": "Älvkarleby kommun",
+  "kod": "0319",
+  "lan": "03FS"
+ },
+ {
+  "id": "tierp",
+  "name": "Tierp",
+  "kommun": "Tierps kommun",
+  "kod": "0360",
+  "lan": "03FS"
+ },
+ {
+  "id": "soderhamn",
+  "name": "Söderhamn",
+  "kommun": "Söderhamns kommun",
+  "kod": "2182",
+  "lan": "21FS"
+ },
+ {
+  "id": "osthammar",
+  "name": "Östhammar",
+  "kommun": "Östhammars kommun",
+  "kod": "0382",
+  "lan": "03FS"
+ },
+ {
+  "id": "heby",
+  "name": "Heby",
+  "kommun": "Heby kommun",
+  "kod": "0331",
+  "lan": "03FS"
+ }
+]

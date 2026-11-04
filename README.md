@@ -1,6 +1,6 @@
-# Datumparkering Gävle
+# Parkering
 
-Karta som visar var du får parkera i Gävle, med hänsyn till datumparkering (1 nov–15 maj, kl 00–06), avgiftszoner och 24-timmarsregeln.
+Karta som visar var du får parkera på gatan, utifrån kommunernas och länsstyrelsernas lokala trafikföreskrifter, datumparkering, avgifter och allmänna regler (korsningar, rondeller, tättbebyggt område). Just nu: Gävle och Sandviken. Kommuner läggs till i `data/regions.json`.
 
 **Sida:** https://adamelfsborg-code.github.io/datumparkering-gavle/
 
@@ -18,10 +18,12 @@ Karta som visar var du får parkera i Gävle, med hänsyn till datumparkering (1
 ## Bygga om
 
 ```sh
-# hämta färsk OSM-data (se data/q_*.txt) och föreskrifter:
-python3 data/rdt_fetch.py   # kräver pdftotext (poppler)
-python3 data/process.py
-python3 build.py      # skriver docs/index.html (GitHub Pages) och build/index.html (Claude-artifact)
+python3 data/osm_fetch.py --all      # OpenStreetMap per kommun
+python3 data/rdt_fetch.py --all      # kommunernas föreskrifter (kräver pdftotext)
+python3 data/rdt_fetch.py 21FS 03FS  # länsstyrelsernas föreskrifter
+python3 data/audit.py gavle          # granska kopplingen gata–föreskrift
+python3 data/process.py gavle sandviken
+python3 build.py      # docs/ (GitHub Pages, data per kommun) och build/index.html (Claude-artifact)
 ```
 
 Hjälpmedel, ingen myndighetstjänst. Skyltar på plats gäller alltid. Kartdata © OpenStreetMap-bidragsgivare (ODbL).

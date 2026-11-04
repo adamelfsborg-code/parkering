@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1d232b">
-<meta name="description" content="Karta över datumparkering i Gävle: se var du får parkera nu, i natt eller under en hel resa.">
-<title>Datumparkering Gävle</title>
+<meta name="description" content="Var får jag parkera? Karta med lokala trafikföreskrifter och datumparkering för Gävle, Sandviken, Uppsala med flera kommuner.">
+<title>Parkering</title>
 <style>/*LEAFLET_CSS*/</style>
 <style>
   :root {
@@ -83,6 +83,7 @@
   .chip { flex: none; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 99px; color: #fff; white-space: nowrap; }
   .rule p { margin: 3px 0 0; color: var(--muted); font-size: 14px; }
   .rule .src { white-space: nowrap; font-size: 12.5px; }
+  .rule details summary { color: var(--info); font-size: 13px; cursor: pointer; margin-top: 3px; }
   .rule .src a { color: var(--info); }
   .bg-ok { background: var(--ok); } .bg-no { background: var(--no); } .bg-soon { background: var(--soon); } .bg-unk { background: var(--unk); } .bg-info { background: var(--info); }
 
@@ -140,7 +141,7 @@
 <div id="top">
   <div class="card searchrow">
     <span class="logo">🅿️</span>
-    <input type="search" id="search" list="streets" placeholder="Sök gata i Gävle" autocomplete="off" enterkeyhint="search">
+    <input type="search" id="search" list="streets" placeholder="Sök gata eller kommun" autocomplete="off" enterkeyhint="search">
     <datalist id="streets"></datalist>
     <button class="round" id="helpBtn" aria-label="Hur fungerar datumparkering?">?</button>
   </div>
@@ -180,7 +181,11 @@
 <div id="help">
   <div class="card">
     <button class="close" id="helpClose">Stäng</button>
-    <h2>Så funkar datumparkering</h2>
+    <h2>Parkering</h2>
+    <p>Kartan visar var du får parkera på gatan, utifrån kommunernas lokala trafikföreskrifter, datumparkering och parkeringsavgifter. Den laddar kommunerna allt eftersom du flyttar kartan.</p>
+    <h4>Kommuner som finns med</h4>
+    <ul id="regionList" style="margin:4px 0 0;padding-left:18px"></ul>
+    <h4>Så funkar datumparkering</h4>
     <p class="note blue embed-only">Här kan sidan inte läsa din position. Öppna <a href="__SITE__" target="_blank" rel="noopener">__SITE__</a> i mobilen så hittar kartan dig direkt.</p>
     <p>Datumparkering finns för att snöröjning och sopning ska komma åt en sida av gatan i taget. Den andra sidan är fri, och nästa natt byter man.</p>
     <h4>Regeln</h4>
@@ -191,8 +196,8 @@
       <div class="bg-no">Udda nr (1, 3, 5…)<br>förbjudet den 5:e</div>
       <div class="bg-ok">Jämna nr (2, 4, 6…)<br>OK den 5:e</div>
     </div>
-    <h4>I Gävle</h4>
-    <p>Datumparkeringen gäller <b>1 november – 15 maj, kl 00.00–06.00</b>, i <b>hela Gävle</b>, även på gator utan skylt (skyltarna står vid infarterna till staden).</p>
+    <h4>Olika i varje kommun</h4>
+    <p>Varje kommun bestämmer själv om den har datumparkering, vilka tider och vilken period den gäller och inom vilket område. I Gävle är det till exempel <b>1 november – 15 maj, kl 00.00–06.00</b>, även på gator utan skylt (skyltarna står vid infarterna). Uppsala har ingen allmän datumparkering, utan förbud för gatustädning på vissa gator och tider. Listan ovan visar vad som gäller var.</p>
     <p>Det är <b>datumet vid midnatt</b> som räknas. Parkerar du på kvällen den 4:e och står kvar natten över, är det den 5:e som gäller, så du ska stå på jämna sidan.</p>
     <p>Utanför 00–06 och under sommarhalvåret får du stå på båda sidorna, om inget annat är skyltat.</p>
     <h4>Ska du bort flera nätter?</h4>
@@ -208,16 +213,16 @@
     <h4>Vad kartan visar</h4>
     <p>Bara gatusidor där du <b>någon gång</b> får parkera ritas ut. Huvudleder, zoner med parkeringsförbud utan undantag, förbud som gäller dygnet runt, reserverade platser (taxi, lastning, rörelsehindrade m.m.) och gågator visas inte alls. Rött betyder att det är förbjudet <i>just nu</i>, till exempel på grund av datumparkering eller tidsbegränsade förbud.</p>
     <h4>Lokala trafikföreskrifter</h4>
-    <p>Kartan läser in Gävle kommuns gällande lokala trafikföreskrifter från Transportstyrelsens register (RDT): förbud att stanna och parkera, huvudleder, reserverade platser, tillåtna sträckor med tidsgräns och zoner med parkeringsförbud. Tryck på en gatusida så ser du vilka föreskrifter som gäller och en länk till varje.</p>
-    <p>I <b>zonerna med parkeringsförbud</b> (bl.a. centrum, Söder, Brynäs, Villastaden, Norrtull, Gävle Strand) får du bara parkera där det är särskilt tillåtet, oftast på markerade platser. Många av de tillåtna sträckorna har en egen, strängare datumregel: <b>kl 00–08 från 1 oktober</b>.</p>
+    <p>Kartan läser in varje kommuns gällande lokala trafikföreskrifter från Transportstyrelsens register (RDT): förbud att stanna och parkera, huvudleder, reserverade platser, tillåtna sträckor med tidsgräns och zoner med parkeringsförbud. Tryck på en gatusida så ser du vilka föreskrifter som gäller och en länk till varje.</p>
+    <p>I Gävle finns <b>zoner med parkeringsförbud</b> (bl.a. centrum, Söder, Brynäs, Villastaden, Norrtull, Gävle Strand) får du bara parkera där det är särskilt tillåtet, oftast på markerade platser. Många av de tillåtna sträckorna har en egen, strängare datumregel: <b>kl 00–08 från 1 oktober</b>.</p>
     <h4>Om datan</h4>
-    <p><small>Gator, husnummer och parkeringsplatser kommer från OpenStreetMap (data från __OSMDATE__). Sidorna räknas ut från var husen med udda och jämna nummer ligger. Sidor där det inte gick att avgöra visas grå. Lokala trafikföreskrifter från Transportstyrelsens RDT (hämtade __RDTDATE__); en del äldre föreskrifter saknar kartdata och kunde inte placeras. Förbudszoner, avgiftszoner och priser kommer från Gävle Parkeringsservice (gavleparkering.se) och Aimo Park, hämtade __OSMDATE__. Priserna kan ha ändrats. Det här är ett hjälpmedel, ingen myndighetstjänst: kontrollera alltid skyltningen. Källkod: <a href="__REPO__" target="_blank" rel="noopener">GitHub</a>.</small></p>
+    <p><small>Gator, husnummer och parkeringsplatser kommer från OpenStreetMap (data från __OSMDATE__). Sidorna räknas ut från var husen med udda och jämna nummer ligger. Sidor där det inte gick att avgöra visas grå. Lokala trafikföreskrifter från Transportstyrelsens RDT (hämtade __RDTDATE__); en del äldre föreskrifter saknar kartdata och kunde inte placeras. För Gävle kommer förbudszoner, avgiftszoner och priser för parkeringshus från Gävle Parkeringsservice (gavleparkering.se) och Aimo Park. Priserna kan ha ändrats. Det här är ett hjälpmedel, ingen myndighetstjänst: kontrollera alltid skyltningen. Källkod: <a href="__REPO__" target="_blank" rel="noopener">GitHub</a>.</small></p>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>window.APP = /*CONFIG*/;</script>
-<script id="data" type="application/json">/*DATA*/</script>
+<script>window.REGION_DATA = /*DATA*/;</script>
 <script>/*RULES_JS*/</script>
 <script>/*APP_JS*/</script>
 </body>

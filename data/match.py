@@ -44,9 +44,9 @@ def sample(pts):
     return out, s
 
 
-def seg_near(px, py, segs):
-    """Närmaste segment: (avstånd, enhetsvektor)."""
-    best = (1e18, (1, 0))
+def seg_near(px, py, segs, with_point=False):
+    """Närmaste segment: (avstånd, enhetsvektor[, närmaste punkt])."""
+    best = (1e18, (1, 0), (px, py))
     for (ax, ay, bx, by) in segs:
         dx, dy = bx - ax, by - ay
         l2 = dx * dx + dy * dy
@@ -56,8 +56,8 @@ def seg_near(px, py, segs):
         d = math.hypot(px - ax - t * dx, py - ay - t * dy)
         if d < best[0]:
             L = math.sqrt(l2)
-            best = (d, (dx / L, dy / L))
-    return best
+            best = (d, (dx / L, dy / L), (ax + t * dx, ay + t * dy))
+    return best if with_point else best[:2]
 
 
 def in_ring(x, y, ring):
@@ -119,7 +119,7 @@ NAME = r"[A-ZÅÄÖ][\wåäöéè\.\-]*(?: [A-ZÅÄÖa-zåäö][\wåäöéè\.\-
 MELLAN = re.compile(r"mellan (" + NAME + r") och (" + NAME + r")(?=,| får| ska|\.| på| enligt| samt|$)")
 
 
-def synth_lines(rule, by_name, xy):
+def synth_lines(rule, by_name, inv):
     """Geometri ur texten för föreskrifter som saknar kartdata i RDT.
 
     Klarar "på X, västra sidan, mellan A och B ..." (via korsningarna X/A och X/B i OSM)
@@ -128,6 +128,8 @@ def synth_lines(rule, by_name, xy):
     text = rule["text"]
     street = norm(rule["street"])
     ways = by_name.get(street) or []
+    if rule["kind"] in ("reserved", "datum"):
+        return []  # gäller enskilda platser; utan exakt geometri vet vi inte var
     if not ways or re.search(r"\bmeter\b|punkt|markerad plats|enligt kartbilaga|korsning", text, re.I):
         return []
     m = MELLAN.search(text)
@@ -170,11 +172,13 @@ def synth_lines(rule, by_name, xy):
                 cur = []
         if len(cur) > 1:
             out.append(cur)
-    inv = lambda pts: [(y / 110540, x / (111320 * math.cos(math.radians(60.67)))) for x, y in pts]
-    return [inv(o) for o in out]
+    return [[inv(x, y) for x, y in o] for o in out]
 
 
-def match(ways, rules, xy, osm_names):
+JUNCTION = 12.0  # m från korsningens mittpunkt ≈ 10 m från korsande körbanas ytterkant
+
+
+def match(ways, rules, xy, inv, osm_names, junction_rule=None):
     """ways: dict med 'pts' (xy), 'tags'. rules: från ltf.load(). Returnerar {way_id: [bitar]}."""
     known = {norm(n) for n in osm_names}
     by_name = {}
@@ -183,10 +187,9 @@ def match(ways, rules, xy, osm_names):
     synthesized = 0
     for r in rules:
         if not (r["lines"] or r["polys"] or r["points"]):
-            r["lines"] = synth_lines(r, by_name, xy)
+            r["lines"] = synth_lines(r, by_name, inv)
             r["fromText"] = bool(r["lines"])
             synthesized += bool(r["lines"])
-    print(f"placerade från text: {synthesized}")
     prepared = []
     for ri, r in enumerate(rules):
         lines = [[xy(lat, lon) for lat, lon in ln] for ln in r["lines"]]
@@ -202,6 +205,16 @@ def match(ways, rules, xy, osm_names):
             "polys": polys, "points": points, "bbox": (min(xs) - 30, min(ys) - 30, max(xs) + 30, max(ys) + 30),
             "street": street, "named": any(k and (k in street) for k in known if len(k) > 4),
         })
+
+    # Finns gatan som föreskriften namnger i närheten av dess geometri? Om inte (namnet stavas
+    # annorlunda i OSM, eller gatan saknar namn där) får den exakta geometrin avgöra.
+    for pr in prepared:
+        b = pr["bbox"]
+        pr["name_near"] = any(
+            not (wb[0] > b[2] or wb[2] < b[0] or wb[1] > b[3] or wb[3] < b[1])
+            for w in by_name.get(pr["street"], []) + [w for k, ws in by_name.items() if k and pr["street"] and k in pr["street"] for w in ws]
+            for wb in [(min(p[0] for p in w["pts"]), min(p[1] for p in w["pts"]), max(p[0] for p in w["pts"]), max(p[1] for p in w["pts"]))]
+        )
 
     result = {}
     for w in ways:
@@ -219,32 +232,51 @@ def match(ways, rules, xy, osm_names):
             if b[0] > wb[2] or b[2] < wb[0] or b[1] > wb[3] or b[3] < wb[1]:
                 continue
             name_ok = bool(wname) and (wname in pr["street"] or (pr["street"] and pr["street"] in wname))
-            if pr["named"] and not name_ok and not pr["polys"]:
-                continue  # föreskriften gäller en annan namngiven gata
+            if pr["named"] and not name_ok and not pr["polys"] and pr["name_near"]:
+                continue  # föreskriften gäller en annan namngiven gata som finns här
             near = NEAR_NAMED if name_ok else NEAR_UNNAMED
             if pr["segs"]:
-                flags = []
+                flags, offs = [], []
                 for s, x, y, ux, uy in smp:
-                    d, (vx, vy) = seg_near(x, y, pr["segs"])
-                    flags.append(d <= near and abs(ux * vx + uy * vy) >= PARALLEL)
-                intervals += [(a, c, pr["i"]) for a, c in runs(flags, smp, min_len=0 if name_ok else 3.0)]
-            edge = EDGE if pr["r"]["kind"] == "area_nopark" else -3.0
+                    d, (vx, vy), (qx, qy) = seg_near(x, y, pr["segs"], with_point=True)
+                    ok = d <= near and abs(ux * vx + uy * vy) >= PARALLEL
+                    flags.append(ok)
+                    # vilken sida av gatan föreskriftslinjen ligger på (+ = vänster i OSM-riktningen)
+                    offs.append(ux * (qy - y) - uy * (qx - x) if ok else None)
+                for a, c in runs(flags, smp, min_len=0 if name_ok else 3.0):
+                    o = [v for (sv, *_), v in zip(smp, offs) if v is not None and a <= sv <= c]
+                    side = None
+                    if o:
+                        pos = sum(1 for v in o if v > 2.5) / len(o)
+                        neg = sum(1 for v in o if v < -2.5) / len(o)
+                        side = "L" if pos >= 0.8 else ("R" if neg >= 0.8 else None)
+                    intervals.append((a, c, pr["i"], side))
+            # Kommunens zonkarta (stora zoner): gränsgator räknas inte in. Exakta ytor i RDT (små förbudsområden,
+            # p-platser, gångfartsområden) är ritade tätt runt gatorna: gator längs kanten ingår.
+            edge = EDGE if str(pr["r"]["id"]).startswith("forbudszon") else -10.0
+            # gränsgator som enligt zonföreskriften ingår i zonen (inte undantagna)
+            boundary_in = bool(wname) and wname in pr["r"].get("boundaryStreets", ())
             for ring in pr["polys"]:
-                # stora förbudsområden: gränsgatorna räknas inte in. Små ytor (gångfartsområden,
-                # torg): gatan räknas med även om den går precis längs kanten.
-                flags = [(in_ring(x, y, ring) and ring_dist(x, y, ring) > edge) or
-                         (edge < 0 and ring_dist(x, y, ring) <= -edge) for _, x, y, _, _ in smp]
-                intervals += [(a, c, pr["i"]) for a, c in runs(flags, smp, pad=0)]
+                # stora förbudsområden: gränsgatorna räknas inte in, om inte föreskriften säger att de ingår.
+                # Små ytor (gångfartsområden, torg, p-platser): gatan räknas med även längs kanten.
+                flags = []
+                for _, x, y, _, _ in smp:
+                    inside, d = in_ring(x, y, ring), ring_dist(x, y, ring)
+                    flags.append((inside and d > edge) or (edge < 0 and d <= -edge) or (boundary_in and d <= 30))
+                intervals += [(a, c, pr["i"], None) for a, c in runs(flags, smp, pad=0)]
             for (px, py) in pr["points"]:
                 if not name_ok:
                     continue
                 best = min(smp, key=lambda q: math.hypot(q[1] - px, q[2] - py))
                 if math.hypot(best[1] - px, best[2] - py) <= 25:
-                    intervals.append((max(0, best[0] - 10), min(length, best[0] + 10), pr["i"]))
+                    intervals.append((max(0, best[0] - 10), min(length, best[0] + 10), pr["i"], None))
+        if junction_rule is not None:
+            for js in w.get("junctions", []):
+                intervals.append((max(0.0, js - JUNCTION), min(length, js + JUNCTION), junction_rule, None))
         if not intervals:
             continue
 
-        cuts = sorted({0.0, length, *[min(length, max(0.0, v)) for a, c, _ in intervals for v in (a, c)]})
+        cuts = sorted({0.0, length, *[min(length, max(0.0, v)) for a, c, *_ in intervals for v in (a, c)]})
         clean = [cuts[0]]
         for c in cuts[1:]:
             if c - clean[-1] >= 2.0:
@@ -256,14 +288,22 @@ def match(ways, rules, xy, osm_names):
         pieces = []
         for s0, s1 in zip(clean, clean[1:]):
             mid = (s0 + s1) / 2
-            here = sorted({ri for a, c, ri in intervals if a <= mid <= c})
+            here = {}
+            for a, c, ri, gside in intervals:
+                if a <= mid <= c:
+                    prev = here.get(ri, "unset")
+                    here[ri] = gside if prev == "unset" or prev == gside else None
             geom = cut(pts, cum, s0, s1)
             dx, dy = geom[-1][0] - geom[0][0], geom[-1][1] - geom[0][1]
             L = math.hypot(dx, dy) or 1
             nx, ny = -dy / L, dx / L  # vänster normal
             left, right = [], []
-            for ri in here:
+            for ri, gside in sorted(here.items()):
                 side = rules[ri]["side"]
+                if not side and gside:
+                    # texten anger ingen sida, men linjen i kartdatan ligger längs ena kanten
+                    (left if gside == "L" else right).append(ri)
+                    continue
                 if side:
                     v = COMPASS[side]
                     dot = nx * v[0] + ny * v[1]
@@ -275,6 +315,17 @@ def match(ways, rules, xy, osm_names):
                         continue
                 left.append(ri)
                 right.append(ri)
+            # Förbud utan angiven sida som överlappar en tillåtelse med angiven sida: kommunen märker inte ut
+            # platser där det är förbjudet att parkera, så förbudet gäller bara den andra sidan.
+            sided_allow_l = any(rules[ri]["kind"] == "allow" and rules[ri]["side"] for ri in left if ri not in right)
+            sided_allow_r = any(rules[ri]["kind"] == "allow" and rules[ri]["side"] for ri in right if ri not in left)
+            for ri in list(left):
+                r = rules[ri]
+                if r["kind"] in ("nopark", "nostop") and not r["side"] and ri in right and r["id"] != "korsning":
+                    if sided_allow_l and not sided_allow_r:
+                        left.remove(ri)
+                    elif sided_allow_r and not sided_allow_l:
+                        right.remove(ri)
             pieces.append({"geom": geom, "left": left, "right": right})
         result[w["id"]] = pieces
     return result

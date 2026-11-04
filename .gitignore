@@ -9,3 +9,6 @@ node_modules/
 .DS_Store
 # Lokala trafikföreskrifter från RDT (hämtas med data/rdt_fetch.py)
 data/rdt/
+
+# Rådata från OpenStreetMap per kommun (hämtas med data/osm_fetch.py)
+data/raw/

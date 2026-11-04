@@ -1,10 +1,11 @@
 (() => {
   const R = window.Rules;
   const APP = window.APP || {};
-  const D = JSON.parse(document.getElementById('data').textContent);
-  const HW = D.hw;
+  const INDEX = APP.regions || [];          // alla regioner (från regions.json)
+  const INLINE = window.REGION_DATA || null; // Claude-versionen: all data inbakad
   document.body.classList.toggle('tiles', !!APP.tiles);
-  const LAT0 = 60.67, KX = 111320 * Math.cos(LAT0 * Math.PI / 180), KY = 110540;
+  // Lokal platt projektion i meter. Fel < 2 % inom Gävleborg/Uppland, räcker för avstånd och förskjutning.
+  const LAT0 = 60.2, KX = 111320 * Math.cos(LAT0 * Math.PI / 180), KY = 110540;
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -59,7 +60,6 @@
 
   // ---------- Zoner ----------
   const ZCOL = { 'Röd': '#d64545', 'Gul': '#e0b000', 'Blå': '#3a74c9', 'Vit': '#9aa3ad' };
-  const zones = D.zones.map(z => ({ ...z, c: z.c || (z.p >= 15 ? 'Röd' : z.p >= 12 ? 'Gul' : z.p >= 6 ? 'Blå' : 'Vit') }));
   const zoneHours = z => z.all ? 'alla dagar 00–24' : `vardagar ${z.wk[0]}–${z.wk[1]}, dag före sön-/helgdag ${z.pre[0]}–${z.pre[1]}`;
   function zoneNow(z, t) {
     const ty = R.dayType(Math.floor(t / R.DAY)), h = (t % R.DAY) / 60;
@@ -75,10 +75,8 @@
   }
 
   // ---------- Lokala trafikföreskrifter ----------
-  const RULES = D.rules.map(([bet, kind, text, sched, unparsed, maxH, forWhat, datum, id, fee]) =>
-    ({ bet, kind, text, sched: unparsed ? null : sched, unparsed, maxH, for: forWhat, datum, id, fee }));
   const BANS = new Set(['nostop', 'nopark', 'reserved', 'pedestrian']);
-  const sideRules = (s, isLeft) => (isLeft ? s[9] : s[10]).map(i => RULES[i]);
+  const sideRules = (reg, s, isLeft) => (isLeft ? s[9] : s[10]).map(i => reg.rules[i]);
   const rdtUrl = r => /^[0-9a-f-]{36}$/.test(r.id) ? `https://rdt.transportstyrelsen.se/rdt/AF06_View.aspx?ForeskriftId=${r.id}` : null;
   const DAYNAME = { wk: 'vardagar', pre: 'dag före sön-/helgdag', hol: 'sön- och helgdagar', d1: 'måndagar', d2: 'tisdagar', d3: 'onsdagar', d4: 'torsdagar', d5: 'fredagar', d6: 'lördagar', d0: 'söndagar' };
   const hhmm = m => `${pad(Math.floor(m / 60) % 24)}${m % 60 ? ':' + pad(m % 60) : ''}`;
@@ -87,17 +85,20 @@
     const months = w.m ? ` (${w.m[1]}/${w.m[0]}–${w.m[3]}/${w.m[2]})` : '';
     return `${days} kl ${hhmm(w.f)}–${hhmm(w.t)}${months}`;
   }).join(', ');
-  // Datumregler som gäller för sidan: den allmänna inom datumområdet, plus sträckans egna
-  function datumSpecs(s, rs) {
-    const specs = s[4] & 8 ? [R.GENERAL] : [];
-    for (const r of rs) if (r.kind === 'allow' && r.datum) specs.push({ f: r.datum.f, t: r.datum.t, m: r.datum.m || R.GENERAL.m });
+  // Datumregler som gäller för sidan: kommunens allmänna inom datumområdet, plus sträckans egna
+  const normSpec = sp => ({ f: sp.f, t: sp.t, m: sp.m || R.GENERAL.m });
+  function datumSpecs(reg, s, rs) {
+    // "Förbudet gäller inte inom särskilt anordnade parkeringsplatser" (t.ex. Gävle 2180 2025:233)
+    const exempt = reg.datum && reg.datum.exemptAnordnad && rs.some(r => r.anordnad && (r.kind === 'allow' || r.kind === 'reserved'));
+    const specs = s[4] & 8 && reg.datum && !exempt ? [reg.datum.spec] : [];
+    for (const r of rs) if ((r.kind === 'allow' || r.kind === 'datum') && r.datum) specs.push(normSpec(r.datum));
     return specs;
   }
   const specLabel = sp => `kl ${hhmm(sp.f)}–${hhmm(sp.t)}, ${sp.m[1]}/${sp.m[0]}–${sp.m[3]}/${sp.m[2]}`;
 
   function ltfRule(r, t, allows) {
-    const src = { bet: r.bet, url: rdtUrl(r) };
-    const text = r.text.length > 320 ? r.text.slice(0, 317) + '…' : r.text;
+    const src = { bet: r.bet, url: rdtUrl(r), full: r.text.length > 320 ? r.text : null };
+    const text = (r.text.length > 320 ? r.text.slice(0, 300) + '…' : r.text) + (r.fromText ? ' (Placeringen är uppskattad från föreskriftens text.)' : '');
     if (BANS.has(r.kind)) {
       const title = { nostop: 'Förbud att stanna och parkera', nopark: 'Förbud att parkera', pedestrian: 'Gågata/gångfartsområde',
                       reserved: `Reserverad för ${r.for || 'särskilt ändamål'}` }[r.kind];
@@ -113,15 +114,17 @@
       return { t: title, c: 'no', chip: 'Förbjudet', p: r.kind === 'mainroad' ? `${text} På huvudled får du inte parkera om inget annat är föreskrivet.` : text, ...src, st: 'no' };
     }
     // allow
-    const lim = r.maxH ? ` Max ${r.maxH >= 1 ? r.maxH + ' h' : Math.round(r.maxH * 60) + ' min'} i följd${r.sched ? ' ' + schedLabel(r.sched) : ''}.` : '';
-    return { t: 'Parkering tillåten', c: 'info', chip: r.maxH ? 'Tidsgräns' : 'Tillåtet', p: text + lim, ...src, st: 'ok' };
+    const lim = r.maxH ? ` Max ${r.maxH >= 1 ? r.maxH + ' h' : Math.round(r.maxH * 60) + ' min'} i följd${r.maxSched ? ' ' + schedLabel(r.maxSched) : ''}.` : '';
+    const fee = r.feeSched ? ` Avgift${r.fee ? ` ${r.fee} kr/h` : ''} ${schedLabel(r.feeSched)}.` : '';
+    return { t: 'Parkering tillåten', c: 'info', chip: r.maxH ? 'Tidsgräns' : 'Tillåtet', p: text + lim + fee, ...src, st: 'ok' };
   }
 
   // ---------- Regler för en gatusida vid tid t ----------
-  function evaluateSide(s, isLeft, t) {
+  function evaluateSide(sd, t) {
+    const { s, isLeft, reg } = sd;
     const [, , hwc, odd, flags, , , , zi] = s;
-    const hw = HW[hwc];
-    const rs = sideRules(s, isLeft);
+    const hw = reg.hw[hwc];
+    const rs = sideRules(reg, s, isLeft).filter(r => r.kind !== 'datum');
     const allows = rs.filter(r => r.kind === 'allow');
     const rules = [];
     let status = 'ok';
@@ -138,9 +141,12 @@
       worst('no');
     }
 
-    const specs = datumSpecs(s, rs);
+    const specs = datumSpecs(reg, s, sideRules(reg, s, isLeft));
+    const general = reg.datum && specs[0] === reg.datum.spec ? reg.datum.spec : null;
     if (!specs.length) {
-      rules.push({ t: 'Datumparkering', c: 'ok', chip: 'Gäller inte här', p: `Gatan ligger utanför området för datumparkering (${D.datumBet}).` });
+      rules.push({ t: 'Datumparkering', c: 'ok', chip: 'Gäller inte här', p: reg.datum
+        ? `Gatan ligger utanför området för datumparkering i ${reg.name} (${reg.datum.bet}).`
+        : `${reg.name} har ingen allmän datumparkering. Tidsbundna förbud, t.ex. för gatustädning, står här ovan om de finns.` });
     } else if (odd === 0) {
       rules.unshift({ t: 'Datumparkering', c: 'unk', chip: 'Okänd sida', p: `Kartan vet inte vilken sida som har udda husnummer här. Udda datum → förbjudet vid udda nummer (${specs.map(specLabel).join('; ')}).` });
       worst('unk');
@@ -148,7 +154,7 @@
       const oddSide = (odd === 1) === isLeft;
       const w = R.datumNext(oddSide, t, specs);
       const x = R.fromMin(t), sideTxt = oddSide ? 'udda' : 'jämna';
-      const own = specs.length > 1 || !(s[4] & 8) ? ` Den här sträckan har en egen datumregel (${specs.filter(sp => sp !== R.GENERAL).map(specLabel).join('; ')}).` : '';
+      const own = specs.length > (general ? 1 : 0) ? ` Den här sträckan har en egen datumregel (${specs.filter(sp => sp !== general).map(specLabel).join('; ')}).` : '';
       let r;
       if (w && w.active) {
         r = { c: 'no', chip: 'Förbjudet nu', p: `Det är ${parity(Math.floor(t / R.DAY))} datum (${x.d}:e), och kl ${hhmm(w.f)}–${hhmm(w.t)} är det förbjudet att parkera på sidan med ${sideTxt} nummer.` };
@@ -157,14 +163,15 @@
         r = { c: 'soon', chip: 'Flytta i natt', p: `OK just nu, men förbudet börjar kl ${hhmm(w.f)} natten mot ${dayLabel(w.day)} (${parity(w.day)} datum). Står du kvar efter midnatt måste bilen stå på andra sidan.` };
         worst('soon');
       } else {
-        r = { c: 'ok', chip: 'OK nu', p: !R.inSeason(x.m, x.d) && !own ? 'Datumparkering gäller bara 1 nov–15 maj.' : 'Förbudet gäller inte den här sidan just nu.' };
+        const inSeason = specs.some(sp => R.monthOk(Math.floor(t / R.DAY), sp.m));
+        r = { c: 'ok', chip: 'OK nu', p: !inSeason ? `Datumparkering gäller bara ${specs.map(sp => `${sp.m[1]}/${sp.m[0]}–${sp.m[3]}/${sp.m[2]}`).join(' och ')}.` : 'Förbudet gäller inte den här sidan just nu.' };
       }
       if (w && !w.active) r.p += ` Nästa förbud här: natten mot ${dayLabel(w.day)} kl ${hhmm(w.f)}–${hhmm(w.t)}.`;
       r.p += own;
-      rules.unshift({ t: `Datumparkering (${D.datumBet})`, ...r });
+      rules.unshift({ t: `Datumparkering${general ? ` (${reg.datum.bet})` : ''}`, ...r });
     }
     for (const r of allows) rules.push(ltfRule(r, t, allows));
-    if (zi >= 0) rules.push(zoneRule(zones[zi], t));
+    if (zi >= 0) rules.push(zoneRule(reg.zones[zi], t));
     if (!rs.length && (hw === 'primary' || hw === 'secondary')) rules.push({ t: 'Större väg', c: 'info', chip: 'Kolla skylt', p: 'Hittade ingen föreskrift här, men större vägar är ofta huvudled. Där är parkering förbjuden.' });
     rules.push({ t: '24-timmarsregeln', c: 'info', chip: 'Info', p: 'Vardagar max 24 h i sträck på samma plats. Lördag, sön- och helgdag räknas inte.' });
     rules.push({ t: 'Allmänt', c: 'info', chip: 'Info', p: 'Inte inom 10 m från korsning eller före övergångsställe. Skyltar på plats gäller alltid före kartan.' });
@@ -172,19 +179,21 @@
   }
 
   // Kan bilen stå på sidan hela perioden [a, b)? Returnerar null om ja, annars skälet.
-  function sideBlocked(s, isLeft, a, b) {
-    const rs = sideRules(s, isLeft), allows = rs.filter(r => r.kind === 'allow');
+  function sideBlocked(sd, a, b) {
+    const rs = sideRules(sd.reg, sd.s, sd.isLeft), allows = rs.filter(r => r.kind === 'allow');
     for (const r of rs) {
       if (BANS.has(r.kind) && R.schedOverlap(r.sched, a, b).any) return r.bet;
       if ((r.kind === 'mainroad' || r.kind === 'area_nopark') && !allows.length) return r.bet;
-      if (r.kind === 'allow' && r.maxH && R.schedOverlap(r.sched, a, b).longest > r.maxH * 60) return r.bet;
+      if (r.kind === 'allow' && r.maxH && R.schedOverlap(r.maxSched, a, b).longest > r.maxH * 60) return r.bet;
     }
     return null;
   }
 
   // ---------- Karta ----------
-  const map = L.map('map', { zoomControl: false, minZoom: 11, maxZoom: 19, preferCanvas: true })
-    .setView([60.6749, 17.1413], 15);
+  let startView = { c: (INDEX[0] && INDEX[0].center) || [60.6749, 17.1413], z: 15 };
+  try { const v = JSON.parse(localStorage.getItem('parkering.view')); if (v && v.c && v.z) startView = v; } catch (e) {}
+  const map = L.map('map', { zoomControl: false, minZoom: 9, maxZoom: 19, preferCanvas: true }).setView(startView.c, startView.z);
+  map.on('moveend', () => { try { localStorage.setItem('parkering.view', JSON.stringify({ c: [map.getCenter().lat, map.getCenter().lng], z: map.getZoom() })); } catch (e) {} });
   if (!L.Browser.mobile) L.control.zoom({ position: 'bottomright' }).addTo(map);
   map.attributionControl.setPrefix('');
   const touch = L.Browser.touch;
@@ -202,76 +211,142 @@
     }).addTo(map);
   } else {
     map.attributionControl.addAttribution('Kartdata © OpenStreetMap-bidragsgivare (ODbL)');
-    const st = { park: { fill: true, fillColor: '#d6ead0', fillOpacity: 1, weight: 0 }, water: { fill: true, fillColor: '#b9d4ec', fillOpacity: 1, weight: 0 },
-                 river: { color: '#aecbe6', weight: 8, fill: false }, coast: { color: '#8fb3d6', weight: 2, fill: false } };
-    for (const [kind, enc] of D.area) {
-      const Ctor = kind === 'park' || kind === 'water' ? L.polygon : L.polyline;
-      Ctor(decode(enc), { ...st[kind], renderer: rBase, interactive: false }).addTo(map);
-    }
-    for (const [hwc, enc] of D.base) {
-      const big = /motorway|trunk/.test(HW[hwc]);
-      L.polyline(decode(enc), { color: big ? '#c7b9a6' : '#fff', weight: big ? 5 : 2, renderer: rBase, interactive: false }).addTo(map);
-    }
   }
+  const AREA_STYLE = { park: { fill: true, fillColor: '#d6ead0', fillOpacity: 1, weight: 0 }, water: { fill: true, fillColor: '#b9d4ec', fillOpacity: 1, weight: 0 },
+                       river: { color: '#aecbe6', weight: 8, fill: false }, coast: { color: '#8fb3d6', weight: 2, fill: false } };
 
   const COLORS = { ok: '#1f9d55', no: '#d64545', soon: '#e0a100', unk: '#8a8f98' };
 
   // Sidor där man aldrig får parkera (huvudled/förbudszon utan undantag, förbud dygnet runt,
   // reserverade platser, gågator) ritas inte alls – kartan visar bara var det ibland är tillåtet.
-  function neverAllowed(s, isLeft) {
-    const hw = HW[s[2]], rs = sideRules(s, isLeft), allows = rs.some(r => r.kind === 'allow');
+  function neverAllowed(reg, s, isLeft) {
+    const hw = reg.hw[s[2]], rs = sideRules(reg, s, isLeft), allows = rs.some(r => r.kind === 'allow');
     if (isLeft ? s[4] & 1 : s[4] & 2) return true;
     if (hw === 'living_street' && !allows) return true;
     return rs.some(r => (BANS.has(r.kind) && !r.sched) || ((r.kind === 'mainroad' || r.kind === 'area_nopark') && !allows));
   }
-  let hiddenSides = 0;
   const sides = [];
-  const streetsByName = new Map();
-  for (const s of D.streets) {
-    const ll = decode(s[7]), xy = ll.map(xyOf), name = D.names[s[1]];
-    if (!APP.tiles) L.polyline(ll, { color: '#fff', weight: 4, renderer: rBase, interactive: false }).addTo(map);
-    for (const isLeft of [true, false]) {
-      if (neverAllowed(s, isLeft)) { hiddenSides++; continue; }
-      const line = L.polyline(ll, { weight: 4, renderer: rSide, lineCap: 'butt' }).addTo(map);
-      const side = { s, isLeft, xy, line, name };
-      line.on('click', () => showSide(side));
-      sides.push(side);
+  const regions = new Map();   // id -> inläst region
+  const loading = new Map();   // id -> Promise
+  const lotLayer = L.layerGroup();
+  const facLayer = L.layerGroup().addTo(map);
+  const pIcon = (bg, big) => L.divIcon({ className: '', html: `<div class="pmark${big ? ' g' : ''}" style="background:${bg}">P</div>`, iconSize: big ? [28, 28] : [22, 22], iconAnchor: big ? [14, 14] : [11, 11] });
+  const lots = [], facilities = [];
+
+  function buildRegion(D) {
+    const reg = {
+      id: D.id, name: D.name, hw: D.hw, names: D.names, rdtDate: D.rdtDate, osmTimestamp: D.osmTimestamp,
+      rules: D.rules.map(([bet, kind, text, sched, unparsed, maxH, forWhat, datum, id, fee, feeSched, maxSched, anordnad, fromText]) =>
+        ({ bet, kind, text, sched: unparsed ? null : sched, unparsed, maxH, for: forWhat, datum, id, fee, feeSched, maxSched, anordnad, fromText })),
+      zones: D.zones.map(z => ({ ...z, c: z.c || (z.p >= 15 ? 'Röd' : z.p >= 12 ? 'Gul' : z.p >= 6 ? 'Blå' : 'Vit') })),
+      datum: D.datum ? { ...D.datum, spec: normSpec(D.datum.spec) } : null,
+      streetsByName: new Map(), hidden: 0, sides: [],
+    };
+    if (!APP.tiles) {
+      for (const [kind, enc] of D.area) {
+        const Ctor = kind === 'park' || kind === 'water' ? L.polygon : L.polyline;
+        Ctor(decode(enc), { ...AREA_STYLE[kind], renderer: rBase, interactive: false }).addTo(map);
+      }
+      for (const [hwc, enc] of D.base) {
+        const big = /motorway|trunk/.test(reg.hw[hwc]);
+        L.polyline(decode(enc), { color: big ? '#c7b9a6' : '#fff', weight: big ? 5 : 2, renderer: rBase, interactive: false }).addTo(map);
+      }
     }
-    if (!streetsByName.has(name)) streetsByName.set(name, []);
-    streetsByName.get(name).push(ll);
+    for (const s of D.streets) {
+      const ll = decode(s[7]), name = D.names[s[1]];
+      if (!APP.tiles) L.polyline(ll, { color: '#fff', weight: 4, renderer: rBase, interactive: false }).addTo(map);
+      if (!reg.streetsByName.has(name)) reg.streetsByName.set(name, []);
+      reg.streetsByName.get(name).push(ll);
+      let xy = null, bounds = null;
+      for (const isLeft of [true, false]) {
+        if (neverAllowed(reg, s, isLeft)) { reg.hidden++; continue; }
+        xy = xy || ll.map(xyOf);
+        bounds = bounds || L.latLngBounds(ll);
+        const line = L.polyline(ll, { weight: 4, renderer: rSide, lineCap: 'butt', color: COLORS.ok });
+        const side = { s, isLeft, xy, line, name, reg, bounds, z: null, tk: null, shown: false };
+        line.on('click', () => showSide(side));
+        reg.sides.push(side);
+        sides.push(side);
+      }
+    }
+    for (const l of D.lots) {
+      const [lat, lon, fee, cap, kind, zi, ni, maxstay, name] = l;
+      const lot = { lat, lon, fee, cap, kind, zi, near: D.names[ni], maxstay, name, ll: [lat, lon], reg };
+      lot.title = name || `Parkeringsplats vid ${lot.near}`;
+      const bg = zi >= 0 || fee === 2 ? '#3a74c9' : fee === 1 ? '#1f9d55' : '#8a8f98';
+      L.marker(lot.ll, { icon: pIcon(bg), keyboard: false }).on('click', () => showLot(lot)).addTo(lotLayer);
+      lots.push(lot);
+    }
+    for (const f of D.facilities) {
+      const fac = { ...f, ll: [f.lat, f.lon], reg };
+      L.marker(fac.ll, { icon: pIcon('#1d4f91', true), keyboard: false, title: f.name }).on('click', () => showFacility(fac)).addTo(facLayer);
+      facilities.push(fac);
+    }
+    regions.set(reg.id, reg);
+    return reg;
   }
 
-  let sideOffsetM = 3;
-  function relayout() {
+  async function loadRegion(id) {
+    if (regions.has(id)) return regions.get(id);
+    if (loading.has(id)) return loading.get(id);
+    const meta = INDEX.find(r => r.id === id);
+    const p = (async () => {
+      if (!INLINE) toast(`Laddar ${meta ? meta.name : id}…`, 1500);
+      const D = INLINE ? INLINE[id] : await fetch(`data/${id}.json?v=${APP.version || ''}`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+      const reg = buildRegion(D);
+      updateSearchList();
+      refreshVisible(true);
+      renderSummary(evalTime());
+      return reg;
+    })();
+    loading.set(id, p);
+    p.catch(() => { loading.delete(id); toast(`Kunde inte ladda ${meta ? meta.name : id}.`); });
+    return p;
+  }
+
+  const bboxOf = r => L.latLngBounds([r.bbox[0], r.bbox[1]], [r.bbox[2], r.bbox[3]]);
+  function ensureRegions() {
+    const view = map.getBounds().pad(0.3);
+    for (const r of INDEX) if (!regions.has(r.id) && !loading.has(r.id) && view.intersects(bboxOf(r)) && map.getZoom() >= 11) loadRegion(r.id);
+  }
+  // Regionen som en punkt ligger i (kommunernas rektanglar överlappar: närmaste centrum vinner)
+  function regionAt(ll) {
+    const p = L.latLng(ll);
+    const cands = INDEX.filter(r => bboxOf(r).contains(p));
+    if (!cands.length) return null;
+    cands.sort((a, b) => p.distanceTo(a.center) - p.distanceTo(b.center));
+    return cands[0];
+  }
+
+  // Ritar om bara det som syns: förskjutning vid ny zoomnivå och färg vid ny tid
+  let curStyle = null, curTk = null;
+  function refreshVisible(force) {
     const z = map.getZoom();
     const w = z >= 18 ? 7 : z >= 17 ? 5 : z >= 16 ? 4 : z >= 14 ? 3 : 2;
-    const mpp = 156543.03 * Math.cos(LAT0 * Math.PI / 180) / Math.pow(2, z);
-    sideOffsetM = (w / 2 + (z >= 16 ? 2.5 : 1)) * mpp;
+    const mpp = 156543.03 * Math.cos(map.getCenter().lat * Math.PI / 180) / Math.pow(2, z);
+    // ut mot trottoarkanten (~3,5 m från mitten) när gatan syns i sin bredd, annars några pixlar
+    const off = Math.max((w / 2 + (z >= 16 ? 2.5 : 1)) * mpp, z >= 16 ? 3.5 : 0);
+    curStyle = z;
+    const t = evalTime();
+    const view = map.getBounds().pad(0.4);
+    const showAll = z >= 12;
     for (const sd of sides) {
-      sd.line.setLatLngs(offset(sd.xy, sd.isLeft ? sideOffsetM : -sideOffsetM).map(llOf));
-      sd.line.setStyle({ weight: w });
+      const vis = showAll && view.intersects(sd.bounds);
+      if (!vis) { if (sd.shown && z < 12) { sd.line.remove(); sd.shown = false; } continue; }
+      if (sd.z !== z || force === 'geom') {
+        sd.line.setLatLngs(offset(sd.xy, sd.isLeft ? off : -off).map(llOf));
+        sd.line.setStyle({ weight: w });
+        sd.z = z;
+      }
+      if (sd.tk !== t || force) {
+        sd.line.setStyle({ color: COLORS[evaluateSide(sd, t).status] });
+        sd.tk = t;
+      }
+      if (!sd.shown) { sd.line.addTo(map); sd.shown = true; }
     }
     if (highlight && highlight.side) drawHighlight(highlight.side);
     if (z >= 15) lotLayer.addTo(map); else lotLayer.remove();
   }
-
-  // ---------- Parkeringsplatser och p-hus ----------
-  const lotLayer = L.layerGroup();
-  const facLayer = L.layerGroup().addTo(map);
-  const pIcon = (bg, big) => L.divIcon({ className: '', html: `<div class="pmark${big ? ' g' : ''}" style="background:${bg}">P</div>`, iconSize: big ? [28, 28] : [22, 22], iconAnchor: big ? [14, 14] : [11, 11] });
-  const lots = D.lots.map(l => {
-    const [lat, lon, fee, cap, kind, zi, ni, maxstay, name] = l;
-    const lot = { lat, lon, fee, cap, kind, zi, near: D.names[ni], maxstay, name, ll: [lat, lon] };
-    lot.title = name || `Parkeringsplats vid ${lot.near}`;
-    const bg = zi >= 0 || fee === 2 ? '#3a74c9' : fee === 1 ? '#1f9d55' : '#8a8f98';
-    L.marker(lot.ll, { icon: pIcon(bg), keyboard: false }).on('click', () => showLot(lot)).addTo(lotLayer);
-    return lot;
-  });
-  const facilities = D.facilities.map(f => {
-    const fac = { ...f, ll: [f.lat, f.lon] };
-    L.marker(fac.ll, { icon: pIcon('#1d4f91', true), keyboard: false, title: f.name }).on('click', () => showFacility(fac)).addTo(facLayer);
-    return fac;
-  });
 
   // ---------- Läge (nu / i natt / vald tid) ----------
   let mode = 'now';
@@ -284,24 +359,30 @@
   }
 
   function recolor() {
-    const t = evalTime();
-    for (const sd of sides) sd.line.setStyle({ color: COLORS[evaluateSide(sd.s, sd.isLeft, t).status] });
-    renderSummary(t);
+    refreshVisible(true);
+    renderSummary(evalTime());
     if (sheetCtx && sheetCtx.refresh) sheetCtx.refresh();
   }
 
   function renderSummary(t) {
-    const day = Math.floor(t / R.DAY), x = R.fromMin(t), odd = x.d % 2 === 1;
+    const day = Math.floor(t / R.DAY), mm = t - day * R.DAY;
+    const meta = regionAt(map.getCenter());
     let txt = `<b>${timeLabel(t)}</b> · `;
-    if (R.inSeason(x.m, x.d) && x.h < 6) {
-      txt += `${odd ? 'Udda' : 'Jämnt'} datum: parkera på <b class="ok">${odd ? 'jämna' : 'udda'} sidan</b>.`;
-    } else if (R.inSeason(x.m, x.d)) {
-      const nd = R.fromDayNum(day + 1);
-      txt += R.inSeason(nd.m, nd.d)
-        ? `Inget förbud nu. I natt (${nd.d % 2 ? 'udda' : 'jämnt'}): <b class="ok">${nd.d % 2 ? 'jämna' : 'udda'} sidan</b>.`
-        : 'Datumparkeringen slutar i natt.';
-    } else {
-      txt += 'Ingen datumparkering (gäller 1 nov–15 maj).';
+    if (!meta) txt += 'Kartan täcker inte det här området ännu.';
+    else if (!meta.datum) txt += `${esc(meta.name)}: ingen allmän datumparkering. Tryck på en gata för att se reglerna.`;
+    else {
+      const sp = normSpec(meta.datum.spec);
+      const parityOf = n => R.fromDayNum(n).d % 2 === 1;
+      const inWin = (n, m) => R.monthOk(n, sp.m) && m >= sp.f && m < (sp.t > sp.f ? sp.t : sp.t + R.DAY);
+      if (inWin(day, mm)) {
+        const odd = parityOf(day);
+        txt += `${esc(meta.name)}, ${odd ? 'udda' : 'jämnt'} datum: parkera på <b class="ok">${odd ? 'jämna' : 'udda'} sidan</b>.`;
+      } else if (R.monthOk(day + 1, sp.m)) {
+        const odd = parityOf(day + 1);
+        txt += `${esc(meta.name)}: inget datumförbud nu. I natt (${odd ? 'udda' : 'jämnt'}): <b class="ok">${odd ? 'jämna' : 'udda'} sidan</b>.`;
+      } else {
+        txt += `${esc(meta.name)}: datumparkering ${specLabel(sp)}. Gäller inte nu.`;
+      }
     }
     $('summary').innerHTML = txt;
   }
@@ -371,7 +452,7 @@
   }
   function clearHighlight() { if (highlight && highlight.layer) highlight.layer.remove(); highlight = null; }
 
-  const ruleHtml = rules => rules.map(r => `<div class="rule"><div class="hd"><span>${esc(r.t)}</span><span class="chip bg-${r.c}">${esc(r.chip)}</span></div><p>${esc(r.p)}${r.bet ? ` <span class="src">${r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${esc(r.bet)}</a>` : esc(r.bet)}</span>` : ''}</p></div>`).join('');
+  const ruleHtml = rules => rules.map(r => `<div class="rule"><div class="hd"><span>${esc(r.t)}</span><span class="chip bg-${r.c}">${esc(r.chip)}</span></div><p>${esc(r.p)}${r.bet ? ` <span class="src">${r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${esc(r.bet)}</a>` : esc(r.bet)}</span>` : ''}</p>${r.full ? `<details><summary>Visa hela föreskriften</summary><p>${esc(r.full)}</p></details>` : ''}</div>`).join('');
   const BIG = { ok: 'Du får parkera här', no: 'Du får INTE parkera här', soon: 'OK nu, men förbud snart', unk: 'Osäkert: kolla husnumren' };
 
   function sideText(side) {
@@ -393,8 +474,8 @@
   function showSide(side) {
     const render = () => {
       const t = evalTime();
-      const { status, rules } = evaluateSide(side.s, side.isLeft, t);
-      return `<div class="pop">${backBtn()}<h3>${esc(side.name)}</h3><div class="sub">${esc(sideText(side))} · ${timeLabel(t)}</div>
+      const { status, rules } = evaluateSide(side, t);
+      return `<div class="pop">${backBtn()}<h3>${esc(side.name)}</h3><div class="sub">${esc(side.reg.name)} · ${esc(sideText(side))} · ${timeLabel(t)}</div>
         <span class="big bg-${status}">${BIG[status]}${mode === 'now' && status !== 'soon' ? ' nu' : ''}</span>${ruleHtml(rules)}</div>`;
     };
     showDetail(render);
@@ -405,11 +486,11 @@
     const render = () => {
       const t = evalTime();
       const rules = [];
-      if (lot.zi >= 0) rules.push(zoneRule(zones[lot.zi], t));
+      if (lot.zi >= 0) rules.push(zoneRule(lot.reg.zones[lot.zi], t));
       else if (lot.fee === 1) rules.push({ t: 'Avgift', c: 'ok', chip: 'Gratis', p: 'Märkt som avgiftsfri i kartdata.' });
       else if (lot.fee === 2) rules.push({ t: 'Avgift', c: 'info', chip: 'Avgift', p: 'Avgiftsbelagd. Pris okänt, se skylten.' });
       else rules.push({ t: 'Avgift', c: 'unk', chip: 'Okänt', p: 'Okänt om avgift tas ut. Se skylten.' });
-      rules.push({ t: 'Datumparkering', c: 'ok', chip: 'Gäller ej', p: 'Datumparkering gäller gatusidor, inte avgränsade parkeringsplatser. Vissa kommunala platser är vinterstängda 1 nov–15 maj där det är skyltat.' });
+      rules.push({ t: 'Datumparkering', c: 'ok', chip: 'Gäller ej', p: 'Datumparkering gäller gatusidor, inte avgränsade parkeringsplatser. Vissa platser kan vara vinterstängda där det är skyltat.' });
       rules.push({ t: '24-timmarsregeln', c: 'info', chip: 'Info', p: 'Vardagar max 24 h i sträck om inget annat är skyltat.' + (lot.maxstay ? ` Kartdata anger maxtid: ${lot.maxstay}.` : '') });
       return `<div class="pop">${backBtn()}<h3>${esc(lot.title)}</h3><div class="sub">${lot.kind === 'street_side' ? 'Parkeringsficka' : 'Parkeringsplats'}${lot.cap ? ` · ${lot.cap} platser` : ''} · ${timeLabel(t)}</div>${ruleHtml(rules)}<p class="muted">Ägare och regler kan variera. Skylten på plats gäller.</p></div>`;
     };
@@ -530,38 +611,39 @@
     const best = new Map();
     for (const sd of sides) {
       const [, , hwc, odd, flags, , , , zi] = sd.s;
-      const hw = HW[hwc];
-      const rs = sideRules(sd.s, sd.isLeft);
+      const reg = sd.reg, hw = reg.hw[hwc];
+      if (sd.bounds.getCenter().distanceTo(target) > 3000) continue;
+      const rs = sideRules(reg, sd.s, sd.isLeft);
       if (odd === 0 || hw === 'living_street') continue;
       if (!rs.length && (hw === 'primary' || hw === 'secondary')) continue;
       if (sd.isLeft ? flags & 1 : flags & 2) continue;
       const near = nearestOn(T, sd.xy);
       if (near.d > 1200) continue;
       const oddSide = (odd === 1) === sd.isLeft;
-      const key = sd.name + '|' + oddSide;
-      const specs = datumSpecs(sd.s, rs);
+      const key = reg.id + '|' + sd.name + '|' + oddSide;
+      const specs = datumSpecs(reg, sd.s, rs);
       if (specs.length && R.datumConflicts(oddSide, a, b, specs).length) { streetBlocked++; continue; }
-      if (sideBlocked(sd.s, sd.isLeft, a, b)) continue;
+      if (sideBlocked(sd, a, b)) continue;
       if (over24) { streetBlocked++; continue; }
       let cost = 0, notes = [];
       if (zi >= 0) {
-        const f = R.zoneFee(zones[zi], a, b);
+        const z = reg.zones[zi], f = R.zoneFee(z, a, b);
         if (f.maxExceeded) continue;
         cost = f.cost;
-        notes.push(`${zones[zi].c} zon ${zones[zi].p} kr/h, ${Math.round(f.paidMin / 60)} h betaltid`);
+        notes.push(`${z.c} zon ${z.p} kr/h, ${Math.round(f.paidMin / 60)} h betaltid`);
       } else {
         const paid = rs.find(r => r.kind === 'allow' && r.fee);
         if (paid) {
-          const ov = R.schedOverlap(paid.sched, a, b);
+          const ov = R.schedOverlap(paid.feeSched, a, b);
           cost = Math.round(ov.total / 60 * paid.fee);
-          notes.push(`Avgift ${paid.fee} kr/h${paid.sched ? ' ' + schedLabel(paid.sched) : ''}`);
+          notes.push(`Avgift ${paid.fee} kr/h${paid.feeSched ? ' ' + schedLabel(paid.feeSched) : ''}`);
         } else notes.push('Ingen avgiftszon');
       }
       const prev = best.get(key);
       if (prev && prev.dist <= near.d) continue;
       best.set(key, {
         kind: 'street', title: sd.name, sub: `Gatuparkering, ${oddSide ? 'udda' : 'jämna'} sidan`, dist: near.d, cost, side: sd, ll: llOf(near.pt),
-        notes: [...notes, !specs.length ? 'Utanför datumparkeringsområdet' : R.datumConflicts(!oddSide, a, b, specs).length ? 'Rätt sida för datumparkeringen hela perioden' : 'Ingen datumparkering under perioden',
+        notes: [...notes, !specs.length ? (reg.datum ? 'Utanför datumparkeringsområdet' : 'Ingen datumparkering här') : R.datumConflicts(!oddSide, a, b, specs).length ? 'Rätt sida för datumparkeringen hela perioden' : 'Ingen datumparkering under perioden',
           ...rs.filter(r => r.kind === 'allow').map(r => `Tillåten enligt ${r.bet}${/markerade/.test(r.text) ? ' (på markerade platser)' : ''}`)],
       });
     }
@@ -574,9 +656,9 @@
       if (over24) continue;
       let cost = 0, uncertain = false, notes = [];
       if (lot.zi >= 0) {
-        const f = R.zoneFee(zones[lot.zi], a, b);
+        const z = lot.reg.zones[lot.zi], f = R.zoneFee(z, a, b);
         if (f.maxExceeded) continue;
-        cost = f.cost; notes.push(`${zones[lot.zi].c} zon ${zones[lot.zi].p} kr/h`);
+        cost = f.cost; notes.push(`${z.c} zon ${z.p} kr/h`);
       } else if (lot.fee === 2) { cost = null; notes.push('Avgift, pris okänt'); }
       else if (lot.fee === 0) { uncertain = true; notes.push('Avgift okänd, kolla skylt'); }
       else notes.push('Avgiftsfri enligt kartdata');
@@ -597,9 +679,10 @@
       r.walk = walkMin(r.dist);
       r.score = r.walk + (r.cost == null ? 30 : r.cost / 6) + (r.uncertain ? 8 : 0) + (r.warn ? 45 : 0) + (r.kind === 'lot' && !r.lot.name ? 3 : 0);
     }
-    const x = R.fromMin(a);
-    const multiNight = R.datumConflicts(true, a, b).length && R.datumConflicts(false, a, b).length;
-    return { list: out, streetBlocked, multiNight, over24, counted, season: R.inSeason(x.m, x.d) };
+    const meta = regionAt(target);
+    const sp = meta && meta.datum ? [normSpec(meta.datum.spec)] : null;
+    const multiNight = !!sp && R.datumConflicts(true, a, b, sp).length > 0 && R.datumConflicts(false, a, b, sp).length > 0;
+    return { list: out, streetBlocked, multiNight, over24, counted };
   }
 
   const resultCard = (r, i, sel) => `<div class="res${sel ? ' sel' : ''}" data-i="${i}">
@@ -693,7 +776,7 @@
         ctx.font = `${z >= 17 ? 13 : 12}px -apple-system, Segoe UI, Roboto, sans-serif`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.fillStyle = '#333';
         const placed = [], b = m.getBounds().pad(0.05);
-        for (const [name, parts] of streetsByName) {
+        for (const [name, parts] of [...regions.values()].flatMap(r => [...r.streetsByName])) {
           let best = null;
           for (const ll of parts) for (let i = 0; i < ll.length - 1; i++) {
             if (!b.contains(ll[i]) || !b.contains(ll[i + 1])) continue;
@@ -716,19 +799,18 @@
 
   // ---------- Position ----------
   let meMarker = null, toastTimer = null;
-  function toast(msg) {
+  function toast(msg, ms = 4000) {
     const el = $('toast'); el.textContent = msg; el.style.display = 'block';
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.style.display = 'none'; }, 4000);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.style.display = 'none'; }, ms);
   }
-  const inGavle = ([la, lo]) => la > 60.58 && la < 60.76 && lo > 16.95 && lo < 17.35;
   function locate(userAsked) {
     if (!navigator.geolocation) { if (userAsked) toast('Webbläsaren kan inte visa position.'); return; }
     navigator.geolocation.getCurrentPosition(pos => {
       const ll = [pos.coords.latitude, pos.coords.longitude];
       if (meMarker) meMarker.setLatLng(ll);
       else meMarker = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#2a7de1', fillOpacity: 1, interactive: false, renderer: rTop }).addTo(map);
-      if (inGavle(ll)) focusOn(ll, 17);
-      else toast('Du verkar inte vara i Gävle. Kartan täcker bara Gävle än så länge.');
+      if (regionAt(ll)) focusOn(ll, 17);
+      else toast(`Kartan täcker inte din plats än. Just nu: ${INDEX.map(r => r.name).join(', ')}.`, 6000);
     }, err => {
       if (userAsked) toast(err.code === 1 ? 'Du har nekat positionen. Tillåt den i webbläsarens inställningar.' : 'Kunde inte hämta position.');
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
@@ -744,16 +826,27 @@
   }));
   whenInput.addEventListener('input', recolor);
 
-  const names = [...streetsByName.keys()].sort((a, b) => a.localeCompare(b, 'sv'));
-  $('streets').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
+  // Sökbara namn: kommuner + gator i inlästa regioner ("Gata, Kommun" när namnet finns i flera)
+  let searchEntries = [];
+  function updateSearchList() {
+    const count = new Map();
+    for (const reg of regions.values()) for (const n of reg.streetsByName.keys()) count.set(n, (count.get(n) || 0) + 1);
+    searchEntries = INDEX.map(r => ({ label: r.name, region: r }));
+    for (const reg of regions.values()) for (const n of reg.streetsByName.keys())
+      searchEntries.push({ label: count.get(n) > 1 ? `${n}, ${reg.name}` : n, reg, street: n });
+    searchEntries.sort((a, b) => a.label.localeCompare(b.label, 'sv'));
+    $('streets').innerHTML = searchEntries.map(e => `<option value="${esc(e.label)}">`).join('');
+  }
   const search = $('search');
   function goStreet() {
     const q = search.value.trim().toLowerCase(); if (!q) return;
-    const name = names.find(n => n.toLowerCase() === q) || names.find(n => n.toLowerCase().startsWith(q)) || names.find(n => n.toLowerCase().includes(q));
-    if (!name) { toast(`Hittade ingen gata som heter "${search.value}".`); return; }
-    search.value = name;
-    map.fitBounds(L.latLngBounds(streetsByName.get(name).flat()), { maxZoom: 18, paddingTopLeft: [20, 170], paddingBottomRight: [20, 80] });
+    const find = f => searchEntries.find(e => f(e.label.toLowerCase()));
+    const hit = find(l => l === q) || find(l => l.startsWith(q)) || find(l => l.includes(q));
+    if (!hit) { toast(`Hittade inget som heter "${search.value}". Gator söks i de kommuner som är inlästa.`); return; }
+    search.value = hit.label;
     search.blur();
+    if (hit.region) { map.setView(hit.region.center, 15); loadRegion(hit.region.id); return; }
+    map.fitBounds(L.latLngBounds(hit.reg.streetsByName.get(hit.street).flat()), { maxZoom: 18, paddingTopLeft: [20, 170], paddingBottomRight: [20, 80] });
   }
   search.addEventListener('change', goStreet);
   search.addEventListener('keydown', e => { if (e.key === 'Enter') goStreet(); });
@@ -765,11 +858,14 @@
   $('planBtn').onclick = openPlanner;
   if (APP.tiles) { $('locate').hidden = false; $('locate').onclick = () => locate(true); }
 
-  map.on('zoomend', relayout);
-  relayout();
-  recolor();
+  map.on('moveend', () => { ensureRegions(); refreshVisible(); renderSummary(evalTime()); });
+  // Kommunlista i hjälprutan
+  $('regionList').innerHTML = INDEX.map(r => `<li><b>${esc(r.name)}</b>: ${r.datum ? `datumparkering ${specLabel(normSpec(r.datum.spec))} (${esc(r.datum.bet || 'kommunens karta')})` : 'ingen allmän datumparkering'}</li>`).join('');
+  updateSearchList();
+  const first = regionAt(map.getCenter()) || INDEX[0];
+  (first ? loadRegion(first.id) : Promise.resolve()).then(() => { ensureRegions(); recolor(); });
   setInterval(() => { if (mode !== 'custom') recolor(); }, 60000);
   if (APP.tiles) locate(false);
 
-  window.__dp = { map, sides, hiddenSides, findParking, R, planState };
+  window.__dp = { map, sides, regions, loadRegion, findParking, R, planState };
 })();
