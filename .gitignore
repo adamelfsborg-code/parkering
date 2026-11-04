@@ -1,0 +1,9 @@
+# Råa nedladdningar från Overpass (återskapas med frågorna i data/q_*.txt)
+data/streets.json
+data/addr.json
+data/base.json
+data/parking.json
+build/
+__pycache__/
+node_modules/
+.DS_Store

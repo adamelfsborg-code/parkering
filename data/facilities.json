@@ -1,0 +1,56 @@
+{
+  "_källor": {
+    "mobilitetshus": "https://gavleparkering.se/parkeringsplatser/ och https://gavleparkering.se/notiser_cpt/andrade-priser-for-timtaxan-i-vara-mobilitetshus/ (hämtat 2026-11-04)",
+    "briggen_pralinen_öppettider": "https://gavleparkering.se/vill-du-slippa-tanka-pa-datumparkering-och-24-timmarsregeln/",
+    "aimo": "https://www.aimopark.se/en/cities/gavle/ (hämtat 2026-11-04)"
+  },
+  "facilities": [
+    {
+      "name": "Mobilitetshus Magasinet", "address": "Lillåvägen 2", "lat": 60.67748, "lon": 17.15324,
+      "operator": "Gävle Parkeringsservice", "kind": "garage",
+      "tariff": { "type": "mobility", "peak": 8, "offpeak": 6, "peakFrom": 6, "peakTo": 19 },
+      "open": null, "maxDays": 30,
+      "notes": "Ca 150 m från Gävle C. Ingen datumparkering eller 24-timmarsregel."
+    },
+    {
+      "name": "Mobilitetshus Briggen", "address": "Wilhelmina Skoghs gata 6", "lat": 60.68197, "lon": 17.16795,
+      "operator": "Gävle Parkeringsservice", "kind": "garage",
+      "tariff": { "type": "mobility", "peak": 8, "offpeak": 6, "peakFrom": 6, "peakTo": 19 },
+      "open": [6, 22],
+      "notes": "Besöksparkering plan 1. Ingen datumparkering eller 24-timmarsregel."
+    },
+    {
+      "name": "Mobilitetshus Pralinen", "address": "Tredje Tvärgatan 6", "lat": 60.67659, "lon": 17.16571,
+      "operator": "Gävle Parkeringsservice", "kind": "garage",
+      "tariff": { "type": "mobility", "peak": 8, "offpeak": 6, "peakFrom": 6, "peakTo": 19 },
+      "open": [6, 22],
+      "notes": "40 besöksplatser. Ingen datumparkering eller 24-timmarsregel."
+    },
+    {
+      "name": "P-hus Flanör", "address": "Norra Slottsgatan 8", "lat": 60.67523, "lon": 17.14107,
+      "operator": "Aimo Park", "kind": "garage",
+      "tariff": { "type": "aimo", "first2": 24, "after": 25, "cap24": 155 },
+      "open": [6, 20],
+      "notes": "Lördagar något billigare (20 kr/h första 2 h). Serviceavgift kan tillkomma."
+    },
+    {
+      "name": "P-hus Oxen", "address": "Kyrkogatan 25", "lat": 60.67477, "lon": 17.14748,
+      "operator": "Aimo Park", "kind": "garage",
+      "tariff": { "type": "aimo", "first2": 24, "after": 26, "cap24": 156 },
+      "open": [6, 22],
+      "notes": "Minimiavgift 10 kr. Serviceavgift kan tillkomma."
+    },
+    {
+      "name": "P-hus Gallerian Nian", "address": "Nygatan 10", "lat": 60.67407, "lon": 17.13992,
+      "operator": "Aimo Park", "kind": "garage",
+      "tariff": null, "open": [0, 24],
+      "notes": "Öppet dygnet runt. Pris för korttid finns i Aimo-appen."
+    },
+    {
+      "name": "P-hus Konvaljen", "address": "Norra Slottsgatan 4", "lat": 60.67376, "lon": 17.14261,
+      "operator": "Aimo Park", "kind": "garage",
+      "tariff": null, "open": [6, 22],
+      "notes": "Pris för korttid finns i Aimo-appen."
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+[out:json][timeout:180];
+(
+  way["highway"~"^(primary|secondary|tertiary|unclassified|residential|living_street|service|pedestrian|trunk|motorway|primary_link|secondary_link|tertiary_link|trunk_link|motorway_link|road)$"](60.60,16.98,60.74,17.30);
+);
+out tags geom;

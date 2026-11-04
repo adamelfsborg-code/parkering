@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d232b">
+<meta name="description" content="Karta över datumparkering i Gävle: se var du får parkera nu, i natt eller under en hel resa.">
+<title>Datumparkering Gävle</title>
+<style>/*LEAFLET_CSS*/</style>
+<style>
+  :root {
+    --ok: #1f9d55; --no: #d64545; --soon: #e0a100; --unk: #8a8f98; --info: #4a6fa5;
+    --ink: #1d232b; --muted: #5b6470; --bg: #eceee8; --card: #fff; --line: #e3e6ea;
+    --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+    --shadow: 0 2px 12px rgba(0,0,0,.16);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--ink); }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  #map { position: absolute; inset: 0; background: var(--bg); }
+  .leaflet-container { background: var(--bg); font: inherit; }
+  .labels-pane { pointer-events: none; }
+
+  /* ---------- Toppen ---------- */
+  #top { position: absolute; z-index: 1000; top: calc(var(--sat) + 10px); left: calc(var(--sal) + 10px); right: calc(var(--sar) + 10px);
+         display: flex; flex-direction: column; gap: 8px; pointer-events: none; max-width: 460px; }
+  #top > * { pointer-events: auto; }
+  .card { background: var(--card); border-radius: 14px; box-shadow: var(--shadow); }
+  .searchrow { display: flex; align-items: center; gap: 6px; padding: 5px 5px 5px 12px; }
+  .searchrow .logo { font-weight: 700; white-space: nowrap; font-size: 15px; }
+  .searchrow input { flex: 1; min-width: 0; border: 0; outline: 0; background: #f2f4f6; border-radius: 10px; padding: 9px 11px; font-size: 16px; }
+  .round { width: 40px; height: 40px; flex: none; border-radius: 10px; border: 0; background: #f2f4f6; font-size: 17px; font-weight: 700; display: grid; place-items: center; }
+  .moderow { display: flex; gap: 6px; align-items: center; }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: none; padding: 7px 11px; border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .seg button.on { background: var(--ink); color: #fff; }
+  #when { border: 0; padding: 9px 10px; font-size: 15px; border-radius: 14px; box-shadow: var(--shadow); min-width: 0; flex: 1; }
+  #summary { padding: 9px 12px; font-size: 14px; }
+  #summary b.no { color: var(--no); } #summary b.ok { color: var(--ok); }
+
+  /* ---------- Knappar nere till höger ---------- */
+  #fabs { position: absolute; z-index: 1000; right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 70px); display: flex; flex-direction: column; gap: 10px; align-items: flex-end; transition: opacity .2s; }
+  .fab { border: 0; background: var(--card); box-shadow: var(--shadow); border-radius: 999px; height: 50px; min-width: 50px; padding: 0 16px; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
+  .fab.primary { background: var(--ink); color: #fff; }
+  .fab svg { width: 22px; height: 22px; }
+
+  #legend { position: absolute; z-index: 999; left: calc(var(--sal) + 10px); bottom: calc(var(--sab) + 22px);
+            display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; padding: 7px 11px; max-width: calc(100% - 20px); transition: opacity .2s; }
+  .sw { display: inline-block; width: 16px; height: 5px; border-radius: 3px; vertical-align: middle; margin-right: 5px; }
+  .leaflet-control-attribution { font-size: 10px; margin-bottom: var(--sab) !important; }
+  body.tiles .leaflet-tile-pane { filter: saturate(.3) brightness(1.06) contrast(.88); }
+  @media (max-width: 440px) { .two.dates { grid-template-columns: 1fr; } }
+  .leaflet-bottom.leaflet-right { bottom: calc(var(--sab) + 44px); }
+
+  /* ---------- Bottenpanel ---------- */
+  #sheet { position: absolute; z-index: 1500; left: 0; right: 0; bottom: 0; height: calc(100% - var(--sat) - 40px); background: var(--card); border-radius: 18px 18px 0 0;
+           box-shadow: 0 -4px 24px rgba(0,0,0,.18); display: flex; flex-direction: column;
+           transform: translateY(105%); transition: transform .25s ease; }
+  #sheet.peek { transform: translateY(48%); }
+  #sheet.full { transform: translateY(0); }
+  #sheet .grab { padding: 9px 0 4px; display: flex; justify-content: center; touch-action: none; cursor: grab; flex: none; }
+  #sheet .grab i { width: 42px; height: 5px; border-radius: 3px; background: #cfd3d8; }
+  #sheet .x { position: absolute; top: 8px; right: 10px; width: 34px; height: 34px; border-radius: 50%; border: 0; background: #f0f2f4; font-size: 16px; line-height: 1; z-index: 2; }
+  #sheetBody { overflow-y: auto; padding: 4px 16px calc(var(--sab) + 18px); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex: 1; }
+  #sheet.peek #sheetBody { padding-bottom: calc(48vh + 18px); }
+  body.sheet-open #fabs, body.sheet-open #legend { opacity: 0; pointer-events: none; }
+  @media (min-width: 820px) {
+    #sheet { left: auto; right: 12px; top: 12px; bottom: 12px; height: auto; width: 400px; border-radius: 16px; transform: translateX(110%); }
+    #sheet.peek, #sheet.full { transform: none; }
+    #sheet.peek #sheetBody { padding-bottom: 18px; }
+    #sheet .grab { display: none; }
+    body.sheet-open #fabs { opacity: 1; pointer-events: auto; right: 424px; }
+    body.sheet-open #legend { opacity: 1; pointer-events: auto; }
+  }
+
+  .pop h3 { margin: 6px 40px 2px 0; font-size: 19px; }
+  .pop .sub { color: var(--muted); margin-bottom: 10px; }
+  .big { display: block; padding: 9px 12px; border-radius: 10px; color: #fff; font-weight: 700; margin-bottom: 8px; }
+  .rule { border-top: 1px solid var(--line); padding: 9px 0 7px; }
+  .rule .hd { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-weight: 600; }
+  .chip { flex: none; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 99px; color: #fff; white-space: nowrap; }
+  .rule p { margin: 3px 0 0; color: var(--muted); font-size: 14px; }
+  .bg-ok { background: var(--ok); } .bg-no { background: var(--no); } .bg-soon { background: var(--soon); } .bg-unk { background: var(--unk); } .bg-info { background: var(--info); }
+
+  /* ---------- Planerare ---------- */
+  .form { display: grid; gap: 10px; margin: 8px 0 12px; }
+  .form label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+  .form input { border: 1px solid var(--line); border-radius: 10px; padding: 10px 8px; font-size: 16px; width: 100%; min-width: 0; background: #fff; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill { border: 1px solid var(--line); background: #fff; border-radius: 99px; padding: 7px 12px; font-size: 14px; font-weight: 600; }
+  .pill.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .btn { border: 0; border-radius: 12px; padding: 13px 14px; font-weight: 700; font-size: 16px; background: var(--ink); color: #fff; width: 100%; }
+  .btn.ghost { background: #f0f2f4; color: var(--ink); }
+  .note { background: #fff7e0; border: 1px solid #f2dc9b; border-radius: 10px; padding: 9px 11px; font-size: 14px; margin: 8px 0; }
+  .note.blue { background: #eef4fb; border-color: #cfe0f3; }
+  .res { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; display: grid; grid-template-columns: 28px 1fr auto; gap: 3px 10px; align-items: start; cursor: pointer; }
+  .res.sel { border-color: #2a7de1; box-shadow: 0 0 0 2px #2a7de1 inset; }
+  .res .num { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: #fff; font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+  .res .t { font-weight: 700; }
+  .res .m { color: var(--muted); font-size: 13.5px; grid-column: 2 / 4; }
+  .res .price { font-weight: 800; white-space: nowrap; }
+  .res .warn { color: #a06c00; font-size: 13px; grid-column: 2 / 4; }
+  .tabs { display: flex; gap: 4px; background: #f0f2f4; padding: 3px; border-radius: 11px; margin: 10px 0 4px; }
+  .tabs button { flex: 1; border: 0; background: none; padding: 8px 4px; border-radius: 9px; font-weight: 700; font-size: 14px; color: var(--muted); }
+  .tabs button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  #crosshair { position: absolute; z-index: 900; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; pointer-events: none; display: none; }
+  body.picking #crosshair { display: block; }
+
+  .pmark { width: 22px; height: 22px; border-radius: 6px; color: #fff; font: 700 13px/18px sans-serif; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.35); border: 2px solid #fff; }
+  .pmark.g { width: 28px; height: 28px; line-height: 24px; font-size: 15px; border-radius: 8px; }
+  .rmark { width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: #fff; font: 700 14px/26px sans-serif; text-align: center; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+  .rmark.sel { background: #2a7de1; }
+  .tmark { width: 18px; height: 18px; border-radius: 50%; background: #2a7de1; border: 3px solid #fff; box-shadow: 0 0 0 2px #1d232b; }
+
+  #toast { position: absolute; z-index: 3000; left: 50%; top: calc(var(--sat) + 130px); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 14px; border-radius: 12px; font-size: 14px; width: max-content; max-width: 90%; box-shadow: var(--shadow); display: none; }
+
+  #help { position: absolute; z-index: 2000; inset: 0; background: rgba(20,25,30,.45); display: none; align-items: center; justify-content: center; padding: calc(var(--sat) + 14px) 14px calc(var(--sab) + 14px); }
+  #help.open { display: flex; }
+  #help .card { max-width: 560px; max-height: 100%; overflow: auto; padding: 18px 20px; }
+  #help h2 { margin: 0 0 8px; } #help h4 { margin: 14px 0 4px; }
+  #help .street { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; text-align: center; font-size: 13px; }
+  #help .street div { padding: 8px; border-radius: 8px; color: #fff; }
+  #help small { color: var(--muted); }
+  body.tiles .embed-only { display: none; }
+  #help .close { float: right; border: 0; background: #f0f2f4; border-radius: 10px; padding: 7px 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<svg id="crosshair" viewBox="0 0 34 34"><circle cx="17" cy="17" r="7" fill="#2a7de1" stroke="#fff" stroke-width="3"/><path d="M17 0v9M17 25v9M0 17h9M25 17h9" stroke="#1d232b" stroke-width="2.5"/></svg>
+
+<div id="top">
+  <div class="card searchrow">
+    <span class="logo">🅿️</span>
+    <input type="search" id="search" list="streets" placeholder="Sök gata i Gävle" autocomplete="off" enterkeyhint="search">
+    <datalist id="streets"></datalist>
+    <button class="round" id="helpBtn" aria-label="Hur fungerar datumparkering?">?</button>
+  </div>
+  <div class="moderow">
+    <div class="card seg" id="mode">
+      <button data-m="now" class="on">Just nu</button>
+      <button data-m="night">I natt</button>
+      <button data-m="custom">Välj tid</button>
+    </div>
+    <input type="datetime-local" id="when" hidden>
+  </div>
+  <div class="card" id="summary"></div>
+</div>
+
+<div id="fabs">
+  <button class="fab" id="locate" aria-label="Visa min position" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  </button>
+  <button class="fab primary" id="planBtn">🗓 Planera parkering</button>
+</div>
+
+<div class="card" id="legend">
+  <span><i class="sw bg-ok"></i>OK</span>
+  <span><i class="sw bg-soon"></i>Flytta i natt</span>
+  <span><i class="sw bg-no"></i>Förbjudet</span>
+  <span><i class="sw bg-unk"></i>Okänd</span>
+</div>
+
+<section id="sheet" aria-live="polite">
+  <div class="grab" id="grab"><i></i></div>
+  <button class="x" id="sheetClose" aria-label="Stäng">✕</button>
+  <div id="sheetBody"></div>
+</section>
+
+<div id="toast"></div>
+
+<div id="help">
+  <div class="card">
+    <button class="close" id="helpClose">Stäng</button>
+    <h2>Så funkar datumparkering</h2>
+    <p class="note blue embed-only">Här kan sidan inte läsa din position. Öppna <a href="__SITE__" target="_blank" rel="noopener">__SITE__</a> i mobilen så hittar kartan dig direkt.</p>
+    <p>Datumparkering finns för att snöröjning och sopning ska komma åt en sida av gatan i taget. Den andra sidan är fri, och nästa natt byter man.</p>
+    <h4>Regeln</h4>
+    <p><b>Udda datum → förbjudet på sidan med udda husnummer.</b><br>
+       <b>Jämnt datum → förbjudet på sidan med jämna husnummer.</b></p>
+    <p>Minnesregel: <i>datumet och husnumret ska inte matcha.</i> Den 5:e (udda) står du alltså på sidan med jämna nummer.</p>
+    <div class="street">
+      <div class="bg-no">Udda nr (1, 3, 5…)<br>förbjudet den 5:e</div>
+      <div class="bg-ok">Jämna nr (2, 4, 6…)<br>OK den 5:e</div>
+    </div>
+    <h4>I Gävle</h4>
+    <p>Datumparkeringen gäller <b>1 november – 15 maj, kl 00.00–06.00</b>, i <b>hela Gävle</b>, även på gator utan skylt (skyltarna står vid infarterna till staden).</p>
+    <p>Det är <b>datumet vid midnatt</b> som räknas. Parkerar du på kvällen den 4:e och står kvar natten över, är det den 5:e som gäller, så du ska stå på jämna sidan.</p>
+    <p>Utanför 00–06 och under sommarhalvåret får du stå på båda sidorna, om inget annat är skyltat.</p>
+    <h4>Ska du bort flera nätter?</h4>
+    <p>Under datumparkeringssäsongen byter förbudet sida varje natt. Bilen kan alltså inte stå kvar på gatan flera nätter i rad (undantaget är månadsskiften som 31 → 1, då två udda datum kommer efter varandra). Ställ den i stället i ett parkeringshus eller på en parkeringsplats. Använd <b>Planera parkering</b> så får du förslag.</p>
+    <h4>Andra regler att känna till</h4>
+    <p>• Vardagar får du stå högst 24 timmar i sträck på samma plats på gatan. Tid på lördagar, sön- och helgdagar (och vardag före helgdag) räknas inte.<br>
+       • I avgiftszonerna betalar du under betaltid, oftast vardagar 9–18 och dag före sön-/helgdag 9–15. Röd zon har max 2 timmar.<br>
+       • Du får inte stanna eller parkera närmare än 10 m från en korsning eller före ett övergångsställe.<br>
+       • På huvudled får du inte parkera.<br>
+       • I gångfartsområden får du bara parkera på markerade platser.<br>
+       • Vissa smala gator har skyltat vinterparkeringsförbud 1 nov–15 maj.<br>
+       • <b>Skyltar på platsen gäller alltid före den här kartan.</b></p>
+    <h4>Om datan</h4>
+    <p><small>Gator, husnummer och parkeringsplatser kommer från OpenStreetMap (data från __OSMDATE__). Sidorna räknas ut från var husen med udda och jämna nummer ligger. Sidor där det inte gick att avgöra visas grå. Regler, zoner och priser kommer från Gävle Parkeringsservice (gavleparkering.se) och Aimo Park, hämtade __OSMDATE__. Priserna kan ha ändrats. Det här är ett hjälpmedel, ingen myndighetstjänst: kontrollera alltid skyltningen. Källkod: <a href="__REPO__" target="_blank" rel="noopener">GitHub</a>.</small></p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>window.APP = /*CONFIG*/;</script>
+<script id="data" type="application/json">/*DATA*/</script>
+<script>/*RULES_JS*/</script>
+<script>/*APP_JS*/</script>
+</body>
+</html>

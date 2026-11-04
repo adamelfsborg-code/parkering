@@ -1,0 +1,6 @@
+[out:json][timeout:180];
+(
+  node["addr:housenumber"]["addr:street"](60.60,16.98,60.74,17.30);
+  way["addr:housenumber"]["addr:street"](60.60,16.98,60.74,17.30);
+);
+out tags center;
