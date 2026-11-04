@@ -2,7 +2,7 @@
 
 Karta som visar var du får parkera på gatan, utifrån kommunernas och länsstyrelsernas lokala trafikföreskrifter, datumparkering, avgifter och allmänna regler (korsningar, rondeller, tättbebyggt område). Just nu: Gävle och Sandviken. Kommuner läggs till i `data/regions.json`.
 
-**Sida:** https://adamelfsborg-code.github.io/datumparkering-gavle/
+**Sida:** https://adamelfsborg-code.github.io/parkering/
 
 - Grönt/gult/rött per gatusida. Tryck på en sida för att se vilka regler som gäller och om de stoppar dig just nu.
 - *Planera parkering*: välj en period (t.ex. en helg) och en plats, så får du förslag sorterade på lämpligast, närmast eller billigast.

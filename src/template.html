@@ -41,13 +41,12 @@
   #summary b.no { color: var(--no); } #summary b.ok { color: var(--ok); }
 
   /* ---------- Knappar nere till höger ---------- */
-  #fabs { position: absolute; z-index: 1000; right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 70px); display: flex; flex-direction: column; gap: 10px; align-items: flex-end; transition: opacity .2s; }
+  #fabs { position: absolute; z-index: 1000; right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 28px); display: flex; flex-direction: column; gap: 10px; align-items: flex-end; transition: opacity .2s; }
   .fab { border: 0; background: var(--card); box-shadow: var(--shadow); border-radius: 999px; height: 50px; min-width: 50px; padding: 0 16px; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
   .fab.primary { background: var(--ink); color: #fff; }
   .fab svg { width: 22px; height: 22px; }
 
-  #legend { position: absolute; z-index: 999; left: calc(var(--sal) + 10px); bottom: calc(var(--sab) + 22px);
-            display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; padding: 7px 11px; max-width: calc(100% - 20px); transition: opacity .2s; }
+  .legend { display: grid; gap: 6px; font-size: 14px; margin: 6px 0; }
   .sw { display: inline-block; width: 16px; height: 5px; border-radius: 3px; vertical-align: middle; margin-right: 5px; }
   .leaflet-control-attribution { font-size: 10px; margin-bottom: var(--sab) !important; }
   body.tiles .leaflet-tile-pane { filter: saturate(.3) brightness(1.06) contrast(.88); }
@@ -65,14 +64,13 @@
   #sheet .x { position: absolute; top: 8px; right: 10px; width: 34px; height: 34px; border-radius: 50%; border: 0; background: #f0f2f4; font-size: 16px; line-height: 1; z-index: 2; }
   #sheetBody { overflow-y: auto; padding: 4px 16px calc(var(--sab) + 18px); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex: 1; }
   #sheet.peek #sheetBody { padding-bottom: calc(48vh + 18px); }
-  body.sheet-open #fabs, body.sheet-open #legend { opacity: 0; pointer-events: none; }
+  body.sheet-open #fabs { opacity: 0; pointer-events: none; }
   @media (min-width: 820px) {
     #sheet { left: auto; right: 12px; top: 12px; bottom: 12px; height: auto; width: 400px; border-radius: 16px; transform: translateX(110%); }
     #sheet.peek, #sheet.full { transform: none; }
     #sheet.peek #sheetBody { padding-bottom: 18px; }
     #sheet .grab { display: none; }
     body.sheet-open #fabs { opacity: 1; pointer-events: auto; right: 424px; }
-    body.sheet-open #legend { opacity: 1; pointer-events: auto; }
   }
 
   .pop h3 { margin: 6px 40px 2px 0; font-size: 19px; }
@@ -160,15 +158,9 @@
   <button class="fab" id="locate" aria-label="Visa min position" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
   </button>
-  <button class="fab primary" id="planBtn">🗓 Planera parkering</button>
+  <button class="fab primary" id="planBtn" hidden>🗓 Planera parkering</button>
 </div>
 
-<div class="card" id="legend">
-  <span><i class="sw bg-ok"></i>OK</span>
-  <span><i class="sw bg-soon"></i>Förbud snart</span>
-  <span><i class="sw bg-no"></i>Förbjudet nu</span>
-  <span><i class="sw bg-unk"></i>Okänd</span>
-</div>
 
 <section id="sheet" aria-live="polite">
   <div class="grab" id="grab"><i></i></div>
@@ -183,6 +175,14 @@
     <button class="close" id="helpClose">Stäng</button>
     <h2>Parkering</h2>
     <p>Kartan visar var du får parkera på gatan, utifrån kommunernas lokala trafikföreskrifter, datumparkering och parkeringsavgifter. Den laddar kommunerna allt eftersom du flyttar kartan.</p>
+    <h4>Färgerna</h4>
+    <div id="legend" class="legend">
+      <span><i class="sw bg-ok"></i>Du får parkera här nu</span>
+      <span><i class="sw bg-soon"></i>OK nu, men förbud inom 12 timmar (t.ex. datumparkering i natt)</span>
+      <span><i class="sw bg-no"></i>Förbjudet just nu, men tillåtet andra tider</span>
+      <span><i class="sw bg-unk"></i>Okänt vilken sida som har udda husnummer</span>
+    </div>
+    <p><small>Gator där du aldrig får parkera ritas inte alls.</small></p>
     <h4>Kommuner som finns med</h4>
     <ul id="regionList" style="margin:4px 0 0;padding-left:18px"></ul>
     <h4>Så funkar datumparkering</h4>

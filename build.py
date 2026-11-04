@@ -10,8 +10,8 @@ import shutil
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-REPO = "https://github.com/adamelfsborg-code/datumparkering-gavle"
-SITE = "https://adamelfsborg-code.github.io/datumparkering-gavle/"
+REPO = "https://github.com/adamelfsborg-code/parkering"
+SITE = "https://adamelfsborg-code.github.io/parkering/"
 DATA = os.path.join(ROOT, "build", "data")
 
 

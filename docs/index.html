@@ -41,13 +41,12 @@
   #summary b.no { color: var(--no); } #summary b.ok { color: var(--ok); }
 
   /* ---------- Knappar nere till höger ---------- */
-  #fabs { position: absolute; z-index: 1000; right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 70px); display: flex; flex-direction: column; gap: 10px; align-items: flex-end; transition: opacity .2s; }
+  #fabs { position: absolute; z-index: 1000; right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 28px); display: flex; flex-direction: column; gap: 10px; align-items: flex-end; transition: opacity .2s; }
   .fab { border: 0; background: var(--card); box-shadow: var(--shadow); border-radius: 999px; height: 50px; min-width: 50px; padding: 0 16px; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; gap: 8px; justify-content: center; }
   .fab.primary { background: var(--ink); color: #fff; }
   .fab svg { width: 22px; height: 22px; }
 
-  #legend { position: absolute; z-index: 999; left: calc(var(--sal) + 10px); bottom: calc(var(--sab) + 22px);
-            display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; padding: 7px 11px; max-width: calc(100% - 20px); transition: opacity .2s; }
+  .legend { display: grid; gap: 6px; font-size: 14px; margin: 6px 0; }
   .sw { display: inline-block; width: 16px; height: 5px; border-radius: 3px; vertical-align: middle; margin-right: 5px; }
   .leaflet-control-attribution { font-size: 10px; margin-bottom: var(--sab) !important; }
   body.tiles .leaflet-tile-pane { filter: saturate(.3) brightness(1.06) contrast(.88); }
@@ -65,14 +64,13 @@
   #sheet .x { position: absolute; top: 8px; right: 10px; width: 34px; height: 34px; border-radius: 50%; border: 0; background: #f0f2f4; font-size: 16px; line-height: 1; z-index: 2; }
   #sheetBody { overflow-y: auto; padding: 4px 16px calc(var(--sab) + 18px); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex: 1; }
   #sheet.peek #sheetBody { padding-bottom: calc(48vh + 18px); }
-  body.sheet-open #fabs, body.sheet-open #legend { opacity: 0; pointer-events: none; }
+  body.sheet-open #fabs { opacity: 0; pointer-events: none; }
   @media (min-width: 820px) {
     #sheet { left: auto; right: 12px; top: 12px; bottom: 12px; height: auto; width: 400px; border-radius: 16px; transform: translateX(110%); }
     #sheet.peek, #sheet.full { transform: none; }
     #sheet.peek #sheetBody { padding-bottom: 18px; }
     #sheet .grab { display: none; }
     body.sheet-open #fabs { opacity: 1; pointer-events: auto; right: 424px; }
-    body.sheet-open #legend { opacity: 1; pointer-events: auto; }
   }
 
   .pop h3 { margin: 6px 40px 2px 0; font-size: 19px; }
@@ -160,15 +158,9 @@
   <button class="fab" id="locate" aria-label="Visa min position" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
   </button>
-  <button class="fab primary" id="planBtn">🗓 Planera parkering</button>
+  <button class="fab primary" id="planBtn" hidden>🗓 Planera parkering</button>
 </div>
 
-<div class="card" id="legend">
-  <span><i class="sw bg-ok"></i>OK</span>
-  <span><i class="sw bg-soon"></i>Förbud snart</span>
-  <span><i class="sw bg-no"></i>Förbjudet nu</span>
-  <span><i class="sw bg-unk"></i>Okänd</span>
-</div>
 
 <section id="sheet" aria-live="polite">
   <div class="grab" id="grab"><i></i></div>
@@ -183,10 +175,18 @@
     <button class="close" id="helpClose">Stäng</button>
     <h2>Parkering</h2>
     <p>Kartan visar var du får parkera på gatan, utifrån kommunernas lokala trafikföreskrifter, datumparkering och parkeringsavgifter. Den laddar kommunerna allt eftersom du flyttar kartan.</p>
+    <h4>Färgerna</h4>
+    <div id="legend" class="legend">
+      <span><i class="sw bg-ok"></i>Du får parkera här nu</span>
+      <span><i class="sw bg-soon"></i>OK nu, men förbud inom 12 timmar (t.ex. datumparkering i natt)</span>
+      <span><i class="sw bg-no"></i>Förbjudet just nu, men tillåtet andra tider</span>
+      <span><i class="sw bg-unk"></i>Okänt vilken sida som har udda husnummer</span>
+    </div>
+    <p><small>Gator där du aldrig får parkera ritas inte alls.</small></p>
     <h4>Kommuner som finns med</h4>
     <ul id="regionList" style="margin:4px 0 0;padding-left:18px"></ul>
     <h4>Så funkar datumparkering</h4>
-    <p class="note blue embed-only">Här kan sidan inte läsa din position. Öppna <a href="https://adamelfsborg-code.github.io/datumparkering-gavle/" target="_blank" rel="noopener">https://adamelfsborg-code.github.io/datumparkering-gavle/</a> i mobilen så hittar kartan dig direkt.</p>
+    <p class="note blue embed-only">Här kan sidan inte läsa din position. Öppna <a href="https://adamelfsborg-code.github.io/parkering/" target="_blank" rel="noopener">https://adamelfsborg-code.github.io/parkering/</a> i mobilen så hittar kartan dig direkt.</p>
     <p>Datumparkering finns för att snöröjning och sopning ska komma åt en sida av gatan i taget. Den andra sidan är fri, och nästa natt byter man.</p>
     <h4>Regeln</h4>
     <p><b>Udda datum → förbjudet på sidan med udda husnummer.</b><br>
@@ -216,12 +216,12 @@
     <p>Kartan läser in varje kommuns gällande lokala trafikföreskrifter från Transportstyrelsens register (RDT): förbud att stanna och parkera, huvudleder, reserverade platser, tillåtna sträckor med tidsgräns och zoner med parkeringsförbud. Tryck på en gatusida så ser du vilka föreskrifter som gäller och en länk till varje.</p>
     <p>I Gävle finns <b>zoner med parkeringsförbud</b> (bl.a. centrum, Söder, Brynäs, Villastaden, Norrtull, Gävle Strand) får du bara parkera där det är särskilt tillåtet, oftast på markerade platser. Många av de tillåtna sträckorna har en egen, strängare datumregel: <b>kl 00–08 från 1 oktober</b>.</p>
     <h4>Om datan</h4>
-    <p><small>Gator, husnummer och parkeringsplatser kommer från OpenStreetMap (data från 2026-11-04). Sidorna räknas ut från var husen med udda och jämna nummer ligger. Sidor där det inte gick att avgöra visas grå. Lokala trafikföreskrifter från Transportstyrelsens RDT (hämtade 2026-11-04); en del äldre föreskrifter saknar kartdata och kunde inte placeras. För Gävle kommer förbudszoner, avgiftszoner och priser för parkeringshus från Gävle Parkeringsservice (gavleparkering.se) och Aimo Park. Priserna kan ha ändrats. Det här är ett hjälpmedel, ingen myndighetstjänst: kontrollera alltid skyltningen. Källkod: <a href="https://github.com/adamelfsborg-code/datumparkering-gavle" target="_blank" rel="noopener">GitHub</a>.</small></p>
+    <p><small>Gator, husnummer och parkeringsplatser kommer från OpenStreetMap (data från 2026-11-04). Sidorna räknas ut från var husen med udda och jämna nummer ligger. Sidor där det inte gick att avgöra visas grå. Lokala trafikföreskrifter från Transportstyrelsens RDT (hämtade 2026-11-04); en del äldre föreskrifter saknar kartdata och kunde inte placeras. För Gävle kommer förbudszoner, avgiftszoner och priser för parkeringshus från Gävle Parkeringsservice (gavleparkering.se) och Aimo Park. Priserna kan ha ändrats. Det här är ett hjälpmedel, ingen myndighetstjänst: kontrollera alltid skyltningen. Källkod: <a href="https://github.com/adamelfsborg-code/parkering" target="_blank" rel="noopener">GitHub</a>.</small></p>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script>window.APP = {"tiles": true, "site": "https://adamelfsborg-code.github.io/datumparkering-gavle/", "repo": "https://github.com/adamelfsborg-code/datumparkering-gavle", "regions": [{"id": "gavle", "name": "Gävle", "bbox": [60.1915, 16.6976, 61.1196, 18.1491], "center": [60.6757, 17.1646], "size": 1907849, "datum": {"bet": "2180 2025:233", "spec": {"f": 0, "t": 360, "m": [11, 1, 5, 15]}}}, {"id": "sandviken", "name": "Sandviken", "bbox": [60.1629, 16.1041, 60.8471, 17.0024], "center": [60.6201, 16.7719], "size": 219043, "datum": {"bet": "2181 2010:163", "spec": {"f": 0, "t": 360, "m": [10, 1, 5, 15]}}}], "version": "202611041636"};</script>
+<script>window.APP = {"tiles": true, "site": "https://adamelfsborg-code.github.io/parkering/", "repo": "https://github.com/adamelfsborg-code/parkering", "regions": [{"id": "gavle", "name": "Gävle", "bbox": [60.1915, 16.6976, 61.1196, 18.1491], "center": [60.6757, 17.1646], "size": 1907849, "datum": {"bet": "2180 2025:233", "spec": {"f": 0, "t": 360, "m": [11, 1, 5, 15]}}}, {"id": "sandviken", "name": "Sandviken", "bbox": [60.1629, 16.1041, 60.8471, 17.0024], "center": [60.6201, 16.7719], "size": 219043, "datum": {"bet": "2181 2010:163", "spec": {"f": 0, "t": 360, "m": [10, 1, 5, 15]}}}], "version": "202611041659"};</script>
 <script>window.REGION_DATA = null;</script>
 <script>// Parkeringsregler för Gävle. Ren logik utan DOM så att den kan testas med node.
 // Tider räknas i "lokala minuter": dagnummer * 1440 + minut på dygnet (svensk tid).
@@ -1263,7 +1263,7 @@
   $('helpBtn').onclick = () => help.classList.add('open');
   $('helpClose').onclick = () => help.classList.remove('open');
   help.addEventListener('click', e => { if (e.target === help) help.classList.remove('open'); });
-  $('planBtn').onclick = openPlanner;
+  $('planBtn').onclick = openPlanner;  // knappen är dold tills vidare
   if (APP.tiles) { $('locate').hidden = false; $('locate').onclick = () => locate(true); }
 
   map.on('moveend', () => { ensureRegions(); refreshVisible(); renderSummary(evalTime()); });
