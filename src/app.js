@@ -855,7 +855,6 @@
   $('helpBtn').onclick = () => help.classList.add('open');
   $('helpClose').onclick = () => help.classList.remove('open');
   help.addEventListener('click', e => { if (e.target === help) help.classList.remove('open'); });
-  $('planBtn').onclick = openPlanner;  // knappen är dold tills vidare
   if (APP.tiles) { $('locate').hidden = false; $('locate').onclick = () => locate(true); }
 
   map.on('moveend', () => { ensureRegions(); refreshVisible(); renderSummary(evalTime()); });

@@ -16,6 +16,7 @@
     --shadow: 0 2px 12px rgba(0,0,0,.16);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; height: 100%; overflow: hidden; font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--ink); }
   button, input { font: inherit; color: inherit; }
   button { cursor: pointer; }
@@ -158,7 +159,6 @@
   <button class="fab" id="locate" aria-label="Visa min position" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
   </button>
-  <button class="fab primary" id="planBtn" hidden>🗓 Planera parkering</button>
 </div>
 
 
@@ -221,7 +221,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script>window.APP = {"tiles": true, "site": "https://adamelfsborg-code.github.io/parkering/", "repo": "https://github.com/adamelfsborg-code/parkering", "regions": [{"id": "gavle", "name": "Gävle", "bbox": [60.1915, 16.6976, 61.1196, 18.1491], "center": [60.6757, 17.1646], "size": 1907849, "datum": {"bet": "2180 2025:233", "spec": {"f": 0, "t": 360, "m": [11, 1, 5, 15]}}}, {"id": "sandviken", "name": "Sandviken", "bbox": [60.1629, 16.1041, 60.8471, 17.0024], "center": [60.6201, 16.7719], "size": 219043, "datum": {"bet": "2181 2010:163", "spec": {"f": 0, "t": 360, "m": [10, 1, 5, 15]}}}], "version": "202611041659"};</script>
+<script>window.APP = {"tiles": true, "site": "https://adamelfsborg-code.github.io/parkering/", "repo": "https://github.com/adamelfsborg-code/parkering", "regions": [{"id": "gavle", "name": "Gävle", "bbox": [60.1915, 16.6976, 61.1196, 18.1491], "center": [60.6757, 17.1646], "size": 1907849, "datum": {"bet": "2180 2025:233", "spec": {"f": 0, "t": 360, "m": [11, 1, 5, 15]}}}, {"id": "sandviken", "name": "Sandviken", "bbox": [60.1629, 16.1041, 60.8471, 17.0024], "center": [60.6201, 16.7719], "size": 219043, "datum": {"bet": "2181 2010:163", "spec": {"f": 0, "t": 360, "m": [10, 1, 5, 15]}}}], "version": "202611041737"};</script>
 <script>window.REGION_DATA = null;</script>
 <script>// Parkeringsregler för Gävle. Ren logik utan DOM så att den kan testas med node.
 // Tider räknas i "lokala minuter": dagnummer * 1440 + minut på dygnet (svensk tid).
@@ -1263,7 +1263,6 @@
   $('helpBtn').onclick = () => help.classList.add('open');
   $('helpClose').onclick = () => help.classList.remove('open');
   help.addEventListener('click', e => { if (e.target === help) help.classList.remove('open'); });
-  $('planBtn').onclick = openPlanner;  // knappen är dold tills vidare
   if (APP.tiles) { $('locate').hidden = false; $('locate').onclick = () => locate(true); }
 
   map.on('moveend', () => { ensureRegions(); refreshVisible(); renderSummary(evalTime()); });
