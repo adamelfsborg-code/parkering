@@ -9,6 +9,8 @@ Karta som visar var du får parkera i Gävle, med hänsyn till datumparkering (1
 
 ## Så funkar det
 
+- **Lokala trafikföreskrifter** (förbud att stanna/parkera, huvudleder, reserverade platser, tillåtna sträckor med tidsgräns) hämtas från Transportstyrelsens RDT med `data/rdt_fetch.py`, tolkas i `data/ltf.py` och kopplas till gatusidor i `data/match.py`. Föreskrifter utan kartdata placeras utifrån texten ("mellan A och B") när det går.
+- Zoner med parkeringsförbud och området för datumparkering: Gävle Parkeringsservices kartor (`data/forbudszoner.kml`) och föreskrift 2180 2025:233.
 - Gator, husnummer och parkeringsplatser kommer från OpenStreetMap. Vilken sida av gatan som har udda nummer räknas ut från var adresserna ligger (`data/process.py`).
 - Avgiftszoner från Gävle Parkeringsservices zonkarta (`data/zones.kml`), priser för parkeringshus i `data/facilities.json`.
 - Regellogiken finns i `src/rules.js` och testas med `node --test test/`.
@@ -16,7 +18,8 @@ Karta som visar var du får parkera i Gävle, med hänsyn till datumparkering (1
 ## Bygga om
 
 ```sh
-# hämta färsk OSM-data (se data/q_*.txt), sedan:
+# hämta färsk OSM-data (se data/q_*.txt) och föreskrifter:
+python3 data/rdt_fetch.py   # kräver pdftotext (poppler)
 python3 data/process.py
 python3 build.py      # skriver docs/index.html (GitHub Pages) och build/index.html (Claude-artifact)
 ```

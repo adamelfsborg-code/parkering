@@ -58,3 +58,31 @@ test('parkeringshus', () => {
   assert.strictEqual(R.facilityCost(aimo, T(2026, 11, 6, 17), T(2026, 11, 8, 20)), 155 * 2 + 73);
   assert.ok(!R.openOk([6, 22], T(2026, 11, 6, 23), T(2026, 11, 8, 20)));
 });
+
+test('tidsfönster i föreskrifter', () => {
+  // vardagar utom dag före helgdag 9–19 (fre 6 nov 2026 är vanlig vardag, lör 7 nov är dag före söndag)
+  const s = [{ d: ['wk'], f: 540, t: 1140 }, { d: ['pre'], f: 540, t: 900 }];
+  assert.ok(R.schedActive(s, T(2026, 11, 6, 10)));
+  assert.ok(!R.schedActive(s, T(2026, 11, 6, 20)));
+  assert.ok(R.schedActive(s, T(2026, 11, 7, 14)));
+  assert.ok(!R.schedActive(s, T(2026, 11, 7, 16)));
+  assert.ok(!R.schedActive(s, T(2026, 11, 8, 12)));  // söndag
+  // över midnatt 22–04 alla dagar
+  const n = [{ d: null, f: 1320, t: 240 }];
+  assert.ok(R.schedActive(n, T(2026, 11, 6, 23)) && R.schedActive(n, T(2026, 11, 7, 3)) && !R.schedActive(n, T(2026, 11, 7, 5)));
+  // helgfri måndag 8–12
+  const m = [{ d: ['helgfri', 'd1'], f: 480, t: 720 }];
+  assert.ok(R.schedActive(m, T(2026, 11, 9, 9)));
+  assert.ok(!R.schedActive(m, T(2026, 4, 6, 9)));  // annandag påsk
+  assert.strictEqual(R.schedNext(s, T(2026, 11, 6, 7), 12 * 60), 120);
+  assert.strictEqual(R.schedOverlap(s, T(2026, 11, 6, 8), T(2026, 11, 6, 12)).longest, 180);
+});
+
+test('egen datumregel på sträcka (00–08, 1 okt–15 maj)', () => {
+  const own = { f: 0, t: 480, m: [10, 1, 5, 15] };
+  // 15 okt 2026 är udda: allmän regel gäller inte än (säsong från 1 nov), egen regel gör det
+  assert.strictEqual(R.datumNext(true, T(2026, 10, 15, 3)).active, false);
+  assert.ok(R.datumNext(true, T(2026, 10, 15, 7), [R.GENERAL, own]).active);
+  assert.ok(R.datumConflicts(true, T(2026, 11, 5, 6, 30), T(2026, 11, 5, 9), [R.GENERAL, own]).length === 1);
+  assert.ok(R.datumConflicts(true, T(2026, 11, 5, 6, 30), T(2026, 11, 5, 9)).length === 0);
+});

@@ -33,31 +33,86 @@
   // 'hol' = sön-/helgdag, 'pre' = vardag före sön-/helgdag, 'wk' = övrig vardag
   const dayType = n => isHoliday(n) ? 'hol' : (isHoliday(n + 1) ? 'pre' : 'wk');
 
-  // ---------- Datumparkering (Gävle: 1 nov–15 maj, 00–06) ----------
-  const inSeason = (m, d) => m >= 11 || m <= 4 || (m === 5 && d <= 15);
-  const windowsFor = (oddSide, n) => {
-    const x = fromDayNum(n);
-    return inSeason(x.m, x.d) && (x.d % 2 === 1) === oddSide ? [n * DAY, n * DAY + 360] : null;
+  // ---------- Säsonger och tidsfönster ----------
+  // m = [månad, dag, månad, dag] (kan gå över nyår), null = hela året
+  const monthOk = (n, m) => {
+    if (!m) return true;
+    const x = fromDayNum(n), md = x.m * 100 + x.d, a = m[0] * 100 + m[1], b = m[2] * 100 + m[3];
+    return a <= b ? md >= a && md <= b : md >= a || md <= b;
   };
 
-  // Aktivt eller nästa förbudsfönster för en sida vid tidpunkt t
-  function datumNext(oddSide, t) {
+  // ---------- Datumparkering ----------
+  // Allmän regel i Gävle (2180 2025:233): kl 00–06, 1 nov–15 maj. Enskilda föreskrifter kan ha
+  // egna tider (ofta 00–08, 1 okt–15 maj) som då gäller på den sträckan.
+  const GENERAL = { f: 0, t: 360, m: [11, 1, 5, 15] };
+  const inSeason = (m, d) => monthOk(dayNum(2001, m, d), GENERAL.m);
+  const windowsFor = (oddSide, n, spec = GENERAL) => {
+    const x = fromDayNum(n);
+    if (!monthOk(n, spec.m || GENERAL.m) || (x.d % 2 === 1) !== oddSide) return null;
+    const end = spec.t > spec.f ? spec.t : spec.t + DAY;
+    return [n * DAY + spec.f, n * DAY + end];
+  };
+
+  // Aktivt eller nästa förbudsfönster för en sida vid tidpunkt t, över flera regeluppsättningar
+  function datumNext(oddSide, t, specs = [GENERAL]) {
     const today = Math.floor(t / DAY);
-    for (let n = today; n < today + 400; n++) {
-      const w = windowsFor(oddSide, n);
-      if (w && w[1] > t) return { day: n, active: w[0] <= t, startsIn: w[0] - t };
+    let best = null;
+    for (const spec of specs) {
+      for (let n = today - 1; n < today + 400; n++) {
+        const w = windowsFor(oddSide, n, spec);
+        if (w && w[1] > t) {
+          const cand = { day: n, active: w[0] <= t, startsIn: w[0] - t, f: spec.f, t: spec.t };
+          if (!best || cand.startsIn < best.startsIn) best = cand;
+          break;
+        }
+      }
     }
-    return null;
+    return best;
   }
 
   // Alla förbudsfönster som överlappar [a, b)
-  function datumConflicts(oddSide, a, b) {
-    const out = [];
-    for (let n = Math.floor(a / DAY); n * DAY < b; n++) {
-      const w = windowsFor(oddSide, n);
-      if (w && w[0] < b && w[1] > a) out.push(n);
+  function datumConflicts(oddSide, a, b, specs = [GENERAL]) {
+    const out = new Set();
+    for (const spec of specs) {
+      for (let n = Math.floor(a / DAY) - 1; n * DAY < b; n++) {
+        const w = windowsFor(oddSide, n, spec);
+        if (w && w[0] < b && w[1] > a) out.add(n);
+      }
     }
-    return out;
+    return [...out].sort((x, y) => x - y);
+  }
+
+  // ---------- Tidsfönster i lokala trafikföreskrifter ----------
+  // sched = [{ d: ['wk'|'pre'|'hol'|'d0'..'d6'|'helgfri'] | null, f, t, m }], null = alltid
+  function dayMatch(n, codes) {
+    if (!codes || !codes.length) return true;
+    const helgfri = codes.includes('helgfri'), ty = dayType(n), wd = fromDayNum(n).wd;
+    return codes.some(c => c === 'helgfri' ? false
+      : c[0] === 'd' ? +c[1] === wd && !(helgfri && isHoliday(n))
+      : c === ty);
+  }
+  function schedActive(sched, t) {
+    if (!sched) return true;
+    const n = Math.floor(t / DAY), mm = t - n * DAY;
+    return sched.some(w => {
+      if (w.f < w.t) return mm >= w.f && mm < w.t && dayMatch(n, w.d) && monthOk(n, w.m);
+      return (mm >= w.f && dayMatch(n, w.d) && monthOk(n, w.m)) || (mm < w.t && dayMatch(n - 1, w.d) && monthOk(n - 1, w.m));
+    });
+  }
+  // Minuter tills fönstret börjar (inom horisonten), annars null
+  function schedNext(sched, t, horizon) {
+    if (!sched) return 0;
+    for (let x = Math.ceil((t + 1) / 15) * 15; x <= t + horizon; x += 15) if (schedActive(sched, x)) return x - t;
+    return null;
+  }
+  // Överlapp med [a, b): { any, longest } i minuter (provas var 5:e minut)
+  function schedOverlap(sched, a, b) {
+    if (!sched) return { any: b > a, longest: b - a, total: b - a };
+    let any = false, run = 0, longest = 0, total = 0;
+    for (let x = a; x < b; x += 5) {
+      if (schedActive(sched, x)) { any = true; run += 5; total += 5; longest = Math.max(longest, run); } else run = 0;
+    }
+    return { any, longest, total };
   }
 
   // ---------- 24-timmarsregeln ----------
@@ -120,8 +175,8 @@
   }
 
   root.Rules = {
-    DAY, dayNum, fromDayNum, toMin, fromMin, easter, holidays, isHoliday, dayType, inSeason,
-    datumNext, datumConflicts, counted24, zoneFee, facilityCost, openOk,
+    DAY, GENERAL, dayNum, fromDayNum, toMin, fromMin, easter, holidays, isHoliday, dayType, inSeason, monthOk,
+    datumNext, datumConflicts, dayMatch, schedActive, schedNext, schedOverlap, counted24, zoneFee, facilityCost, openOk,
   };
   if (typeof module !== 'undefined') module.exports = root.Rules;
 })(typeof window !== 'undefined' ? window : globalThis);

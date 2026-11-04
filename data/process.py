@@ -10,9 +10,13 @@ import json
 import math
 import os
 import re
+import sys
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import ltf  # noqa: E402
+import match  # noqa: E402
 OUT = os.path.join(HERE, "..", "build", "gavle-data.json")
 
 PARKING_HW = {"primary", "secondary", "tertiary", "unclassified", "residential",
@@ -227,6 +231,26 @@ def main():
         return name_idx[n]
 
     zones = parse_zones(os.path.join(HERE, "zones.kml"))
+
+    # Lokala trafikföreskrifter från Transportstyrelsen, kopplade till gatubitar
+    rules = ltf.load()
+    street_ways = [w for w in ways if w["hw"] in PARKING_HW and "name" in w["tags"]]
+    pieces = match.match(street_ways, rules, xy, {w["tags"]["name"] for w in street_ways})
+    rule_out, rule_idx = [], {}
+    datum_bet, datum_polys = ltf.datum_area()
+    datum_rings = [[(lat, lon) for lat, lon in ring] for ring in datum_polys]
+
+    def in_datum(lat, lon):
+        return any(in_ring(lat, lon, ring) for ring in datum_rings)
+
+    def ridx(i):
+        if i not in rule_idx:
+            r = rules[i]
+            rule_idx[i] = len(rule_out)
+            rule_out.append([r["bet"], r["kind"], r["text"], r["sched"], r["unparsed"], r["maxH"],
+                             r["for"], r["datum"], r["id"], r["fee"]])
+        return rule_idx[i]
+
     out_streets, out_base = [], []
     for w in ways:
         if w["hw"] in BASE_HW or "name" not in w["tags"]:
@@ -237,9 +261,14 @@ def main():
         odd_nums = sorted(w["nums"][w["odd"]]) if w["odd"] else []
         even_nums = sorted(w["nums"][-w["odd"]]) if w["odd"] else []
         rng = lambda ns: [ns[0], ns[-1]] if ns else []
-        out_streets.append([w["id"], nidx(w["tags"]["name"]), HW_CODE[w["hw"]], w["odd"],
-                            flags, rng(odd_nums), rng(even_nums), encode(w["geom"]),
-                            zone_of(*midpoint(w["geom"]), zones)])
+        parts = pieces.get(w["id"]) or [{"geom": w["pts"], "left": [], "right": []}]
+        for part in parts:
+            geom = [(y / KY, x / KX) for x, y in part["geom"]]
+            pflags = flags | (8 if in_datum(*midpoint(geom)) else 0)
+            out_streets.append([w["id"], nidx(w["tags"]["name"]), HW_CODE[w["hw"]], w["odd"],
+                                pflags, rng(odd_nums), rng(even_nums), encode(geom),
+                                zone_of(*midpoint(geom), zones),
+                                [ridx(i) for i in part["left"]], [ridx(i) for i in part["right"]]])
 
 
     # Parkeringsplatser (OSM) som är öppna för allmänheten
@@ -286,7 +315,8 @@ def main():
     data = {"hw": sorted(HW_CODE, key=lambda h: HW_CODE[h]), "names": names,
             "streets": out_streets, "base": out_base, "area": water,
             "zones": [{**{k: v for k, v in z.items() if k != "ring"}, "ring": encode(z["ring"])} for z in zones],
-            "lots": lots, "facilities": facilities,
+            "lots": lots, "facilities": facilities, "rules": rule_out, "datumBet": datum_bet,
+            "rdtDate": __import__("datetime").date.fromtimestamp(os.path.getmtime(os.path.join(HERE, "rdt", "export.csv"))).isoformat(),
             "osmTimestamp": json.load(open(os.path.join(HERE, "streets.json")))["osm3s"]["timestamp_osm_base"]}
     json.dump(data, open(OUT, "w"), separators=(",", ":"), ensure_ascii=False)
 
@@ -294,6 +324,8 @@ def main():
     print(f"adresser använda: {used}/{len(addrs)}")
     print(f"gatusegment: {len(out_streets)}, med känd udda sida: {known} "
           f"({100 * known / max(1, len(out_streets)):.0f}%), bakgrund: {len(out_base)}, ytor: {len(water)}")
+    matched = {i for p in pieces.values() for part in p for i in part["left"] + part["right"]}
+    print(f"föreskrifter: {len(rules)}, kopplade till gator: {len(matched)}, gatubitar: {len(out_streets)}")
     print(f"zoner: {len(zones)}, gator i zon: {sum(1 for x in out_streets if x[8] >= 0)}, p-platser: {len(lots)}, anläggningar: {len(facilities)}")
     print(f"storlek: {os.path.getsize(OUT) / 1e6:.2f} MB")
 

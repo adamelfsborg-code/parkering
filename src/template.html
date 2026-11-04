@@ -82,6 +82,8 @@
   .rule .hd { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-weight: 600; }
   .chip { flex: none; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 99px; color: #fff; white-space: nowrap; }
   .rule p { margin: 3px 0 0; color: var(--muted); font-size: 14px; }
+  .rule .src { white-space: nowrap; font-size: 12.5px; }
+  .rule .src a { color: var(--info); }
   .bg-ok { background: var(--ok); } .bg-no { background: var(--no); } .bg-soon { background: var(--soon); } .bg-unk { background: var(--unk); } .bg-info { background: var(--info); }
 
   /* ---------- Planerare ---------- */
@@ -162,7 +164,7 @@
 
 <div class="card" id="legend">
   <span><i class="sw bg-ok"></i>OK</span>
-  <span><i class="sw bg-soon"></i>Flytta i natt</span>
+  <span><i class="sw bg-soon"></i>Förbud snart</span>
   <span><i class="sw bg-no"></i>Förbjudet</span>
   <span><i class="sw bg-unk"></i>Okänd</span>
 </div>
@@ -203,8 +205,11 @@
        • I gångfartsområden får du bara parkera på markerade platser.<br>
        • Vissa smala gator har skyltat vinterparkeringsförbud 1 nov–15 maj.<br>
        • <b>Skyltar på platsen gäller alltid före den här kartan.</b></p>
+    <h4>Lokala trafikföreskrifter</h4>
+    <p>Kartan läser in Gävle kommuns gällande lokala trafikföreskrifter från Transportstyrelsens register (RDT): förbud att stanna och parkera, huvudleder, reserverade platser, tillåtna sträckor med tidsgräns och zoner med parkeringsförbud. Tryck på en gatusida så ser du vilka föreskrifter som gäller och en länk till varje.</p>
+    <p>I <b>zonerna med parkeringsförbud</b> (bl.a. centrum, Söder, Brynäs, Villastaden, Norrtull, Gävle Strand) får du bara parkera där det är särskilt tillåtet, oftast på markerade platser. Många av de tillåtna sträckorna har en egen, strängare datumregel: <b>kl 00–08 från 1 oktober</b>.</p>
     <h4>Om datan</h4>
-    <p><small>Gator, husnummer och parkeringsplatser kommer från OpenStreetMap (data från __OSMDATE__). Sidorna räknas ut från var husen med udda och jämna nummer ligger. Sidor där det inte gick att avgöra visas grå. Regler, zoner och priser kommer från Gävle Parkeringsservice (gavleparkering.se) och Aimo Park, hämtade __OSMDATE__. Priserna kan ha ändrats. Det här är ett hjälpmedel, ingen myndighetstjänst: kontrollera alltid skyltningen. Källkod: <a href="__REPO__" target="_blank" rel="noopener">GitHub</a>.</small></p>
+    <p><small>Gator, husnummer och parkeringsplatser kommer från OpenStreetMap (data från __OSMDATE__). Sidorna räknas ut från var husen med udda och jämna nummer ligger. Sidor där det inte gick att avgöra visas grå. Lokala trafikföreskrifter från Transportstyrelsens RDT (hämtade __RDTDATE__); en del äldre föreskrifter saknar kartdata och kunde inte placeras. Förbudszoner, avgiftszoner och priser kommer från Gävle Parkeringsservice (gavleparkering.se) och Aimo Park, hämtade __OSMDATE__. Priserna kan ha ändrats. Det här är ett hjälpmedel, ingen myndighetstjänst: kontrollera alltid skyltningen. Källkod: <a href="__REPO__" target="_blank" rel="noopener">GitHub</a>.</small></p>
   </div>
 </div>
 

@@ -21,7 +21,9 @@ css = read("src", "leaflet.min.css")
 rules_js = read("src", "rules.js")
 app_js = read("src", "app.js")
 data = read("build", "gavle-data.json")
-osm_date = datetime.fromisoformat(json.loads(data)["osmTimestamp"].replace("Z", "+00:00")).strftime("%Y-%m-%d")
+meta = json.loads(data)
+osm_date = datetime.fromisoformat(meta["osmTimestamp"].replace("Z", "+00:00")).strftime("%Y-%m-%d")
+rdt_date = meta.get("rdtDate", "")
 
 for out, tiles in ((os.path.join("docs", "index.html"), True), (os.path.join("build", "index.html"), False)):
     cfg = json.dumps({"tiles": tiles, "site": SITE, "repo": REPO})
@@ -31,6 +33,7 @@ for out, tiles in ((os.path.join("docs", "index.html"), True), (os.path.join("bu
                .replace("/*RULES_JS*/", rules_js)
                .replace("/*APP_JS*/", app_js)
                .replace("__OSMDATE__", osm_date)
+               .replace("__RDTDATE__", rdt_date)
                .replace("__REPO__", REPO)
                .replace("__SITE__", SITE))
     path = os.path.join(ROOT, out)

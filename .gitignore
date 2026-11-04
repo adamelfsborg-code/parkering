@@ -7,3 +7,5 @@ build/
 __pycache__/
 node_modules/
 .DS_Store
+# Lokala trafikföreskrifter från RDT (hämtas med data/rdt_fetch.py)
+data/rdt/
